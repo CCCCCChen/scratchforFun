@@ -1,0 +1,39 @@
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+}
+
+.scratch-card {
+    position: relative; /* 修改为相对定位 */
+    width: 709px;
+    height: 1000px;
+    background-image: url('../bg_01.jpg'); /* 修改背景图片 */
+    background-size: cover;
+    background-color: red; /* 添加背景颜色 */
+    background-position: bottom; /* 背景图片在底部 */
+    border: 1px solid #000;
+}
+
+canvas {
+    position: absolute; /* 保持绝对定位 */
+    top: 540px; /* 保持原有位置 */
+    left: 90px; /* 保持原有位置 */
+    width: 520px;
+    height: 240px;
+    cursor: crosshair;
+}
+
+.prize {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    color: #fff;
+    display: none;
+}
