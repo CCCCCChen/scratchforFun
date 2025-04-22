@@ -7,137 +7,26 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="scratch-card">
-        <canvas id="scratchCanvas" width="300" height="200"></canvas>
-        <div class="prize" id="prize"></div>
-    </div>
-    <p>欢迎, {{ username }}</p>
-    <p>刮刮乐编号: <span id="scratchNumber">1</span></p>
-    <p>奖池内剩余数量: <span id="remainingCount">{{ scratch_count }}</span></p>
-    <button id="nextScratch">下一张</button>
-    <a href="{{ url_for('logout') }}">退出登录</a>
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const canvas = document.getElementById('scratchCanvas');
-            const ctx = canvas.getContext('2d');
-            const prizeDiv = document.getElementById('prize');
-            const scratchNumber = document.getElementById('scratchNumber');
-            const remainingCount = document.getElementById('remainingCount');
-            const nextScratchButton = document.getElementById('nextScratch');
+    {% extends "base.html" %}
 
-            // 初始化涂层
-            ctx.fillStyle = '#c0c0c0'; // 修改为银色
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // 预加载中奖信息
-            let prize = preloadPrize();
-
-            // 鼠标事件
-            canvas.addEventListener('mousedown', startScratch);
-            canvas.addEventListener('mousemove', scratch);
-            canvas.addEventListener('mouseup', endScratch);
-            canvas.addEventListener('touchstart', startScratch);
-            canvas.addEventListener('touchmove', scratch);
-            canvas.addEventListener('touchend', endScratch);
-
-            let isScratching = false;
-            let scratchValid = false;
-
-            function startScratch(e) {
-                isScratching = true;
-                scratch(e);
-            }
-
-            function scratch(e) {
-                if (!isScratching) return;
-                e.preventDefault();
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                ctx.globalCompositeOperation = 'destination-out';
-                ctx.beginPath();
-                ctx.arc(x, y, 20, 0, Math.PI * 2);
-                ctx.fill();
-                checkCompletion(x, y);
-            }
-
-            function endScratch() {
-                isScratching = false;
-                if (scratchValid) {
-                    revealPrize();
-                }
-            }
-
-            function checkCompletion(x, y) {
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const pixelCount = imageData.data.length / 4;
-                let transparentPixels = 0;
-
-                for (let i = 0; i < pixelCount; i++) {
-                    if (imageData.data[i * 4 + 3] === 0) {
-                        transparentPixels++;
-                    }
-                }
-
-                if (transparentPixels > pixelCount * 0.8) {
-                    revealPrize();
-                }
-
-                // 检查是否在文字区域内刮
-                const prizeRect = prizeDiv.getBoundingClientRect();
-                if (x >= prizeRect.left && x <= prizeRect.right && y >= prizeRect.top && y <= prizeRect.bottom) {
-                    scratchValid = true;
-                }
-            }
-
-            function revealPrize() {
-                prizeDiv.textContent = prize;
-                prizeDiv.style.display = 'block';
-                // 发送刮刮乐请求
+    {% block content %}
+        <h1>欢迎回来，{{ username }}!</h1>
+        <div class="scratch-card" onclick="scratch()">
+            刮刮乐
+        </div>
+        <div class="remaining-count">
+            剩余刮刮乐数量: {{ scratch_count }}
+        </div>
+        <a href="{{ url_for('logout') }}">退出登录</a>
+        <script>
+            function scratch() {
                 fetch('/scratch', { method: 'POST' })
                     .then(response => response.text())
-                    .then(data => {
-                        console.log(data);
-                        alert('刮刮乐结果: ' + prize);
-                        updateRemainingCount();
-                        // 清除刮刮乐结果
-                        setTimeout(() => {
-                            prizeDiv.style.display = 'none';
-                        }, 3000);
-                    })
+                    .then(data => alert(data))
                     .catch(error => console.error('Error:', error));
             }
-
-            function preloadPrize() {
-                const prizes = ['一等奖', '二等奖', '三等奖', '谢谢参与'];
-                const probabilities = [0.1, 0.2, 0.3, 0.4];
-                let random = Math.random();
-                let cumulativeProbability = 0;
-
-                for (let i = 0; i < probabilities.length; i++) {
-                    cumulativeProbability += probabilities[i];
-                    if (random < cumulativeProbability) {
-                        return prizes[i];
-                    }
-                }
-            }
-
-            function updateRemainingCount() {
-                fetch('/remaining_count')
-                    .then(response => response.json())
-                    .then(data => {
-                        remainingCount.textContent = data.remainingCount;
-                    })
-                    .catch(error => console.error('Error:', error));
-            }
-
-            nextScratchButton.addEventListener('click', () => {
-                location.reload();
-            });
-
-            updateRemainingCount();
-        });
-    </script>
+        </script>
+    {% endblock %}
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>

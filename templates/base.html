@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户登录</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>Scratch for Fun</title>
     <style>
         /* 玻璃拟态风格的CSS */
         body {
@@ -24,12 +23,10 @@
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
             border: 1px solid rgba(255, 255, 255, 0.18);
             padding: 2rem;
-            width: 90%;
-            max-width: 400px;
             text-align: center;
         }
 
-        h2 {
+        h1, h2 {
             color: #333;
             margin-bottom: 1rem;
         }
@@ -61,27 +58,34 @@
             cursor: pointer;
         }
 
-        a {
+        .scratch-card {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             color: #333;
-            text-decoration: none;
-            margin-top: 1rem;
+            font-size: 1.2rem;
+            cursor: pointer;
             transition: all 0.3s ease;
         }
 
-        a:hover {
+        .scratch-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .remaining-count {
+            margin-top: 1rem;
             color: #666;
+            font-size: 0.9rem;
         }
     </style>
 </head>
 <body>
     <div class="glass-container">
-        <h2>登录</h2>
-        <form method="POST" action="{{ url_for('login') }}">
-            <input type="text" name="username" placeholder="用户名" required>
-            <input type="password" name="password" placeholder="密码" required>
-            <button type="submit">登录</button>
-        </form>
-        <p>没有账号？<a href="{{ url_for('register') }}">注册</a></p>
+        {% block content %}{% endblock %}
     </div>
 </body>
 </html>

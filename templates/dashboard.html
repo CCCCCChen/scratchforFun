@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日历卡片</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="glass-container">
+        <h2>请选择一张票</h2>
+        <div class="card-grid">
+            {% for ticket in tickets %}
+                <a href="{{ url_for('scratch_card', ticket_id=ticket[0]) }}" class="card">
+                    {{ ticket[1] }}
+                </a>
+            {% endfor %}
+        </div>
+        <div class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('dashboard', page=page-1) }}">上一页</a>
+            {% endif %}
+            <span>第 {{ page }} 页</span>
+            {% if tickets|length == 9 %}
+                <a href="{{ url_for('dashboard', page=page+1) }}">下一页</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

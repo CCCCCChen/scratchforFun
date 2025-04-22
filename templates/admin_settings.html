@@ -7,25 +7,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <h1>奖池设置</h1>
-    <form method="post">
-        <label for="first_prize">一等奖概率:</label>
-        <input type="number" id="first_prize" name="first_prize" step="0.01" value="{{ prizes['一等奖'] }}" required>
-        <br>
-        <label for="second_prize">二等奖概率:</label>
-        <input type="number" id="second_prize" name="second_prize" step="0.01" value="{{ prizes['二等奖'] }}" required>
-        <br>
-        <label for="third_prize">三等奖概率:</label>
-        <input type="number" id="third_prize" name="third_prize" step="0.01" value="{{ prizes['三等奖'] }}" required>
-        <br>
-        <label for="thanks">谢谢参与概率:</label>
-        <input type="number" id="thanks" name="thanks" step="0.01" value="{{ prizes['谢谢参与'] }}" required>
-        <br>
-        <label for="scratch_count">刮刮乐数量:</label>
-        <input type="number" id="scratch_count" name="scratch_count" value="{{ scratch_count }}" required>
-        <br>
+    <h2>管理员设置</h2>
+    <form method="POST" action="{{ url_for('admin_settings') }}">
+        <input type="number" step="0.01" name="first_prize" placeholder="一等奖概率" value="{{ prizes['一等奖'] }}" required>
+        <input type="number" step="0.01" name="second_prize" placeholder="二等奖概率" value="{{ prizes['二等奖'] }}" required>
+        <input type="number" step="0.01" name="third_prize" placeholder="三等奖概率" value="{{ prizes['三等奖'] }}" required>
+        <input type="number" step="0.01" name="thanks" placeholder="谢谢参与概率" value="{{ prizes['谢谢参与'] }}" required>
+        <input type="number" name="scratch_count" placeholder="刮刮乐总数" value="{{ scratch_count }}" required>
         <button type="submit">保存设置</button>
     </form>
-    <a href="{{ url_for('logout') }}">退出登录</a>
+    <a href="{{ url_for('admin') }}">返回</a>
 </body>
 </html>
