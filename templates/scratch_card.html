@@ -33,8 +33,8 @@
     }
     .scratch-card {
         width: 80%; /* 修改: 宽度改为页面宽度的 80% */
-        height: calc(80% * 2707 / 1608); /* 修改: 高度按宽高比计算 */
-        max-width: 1608px; /* 修改: 最大宽度限制为 1608px */
+        height: calc(80% * 3014 / 1505); /* 修改: 高度按宽高比计算 */
+        max-width: 1505px; /* 修改: 最大宽度限制为 1505px */
         max-height: calc(100vh - 20px); /* 修改: 最大高度限制为视口高度减去 20px */
         margin: 10px auto 0; /* 修改: 上下外边距调整 */
         /*background: rgba(255, 255, 255, 0.1);*/
@@ -62,17 +62,17 @@
     }
 
     /* 新增: 动态调整 scratch-card 的宽高 */
-    @media (max-width: 1608px) {
+    @media (max-width: 1505px) {
         .scratch-card {
             width: 95vw; /* 当宽度超过 95% 时，限制为 95vw */
-            height: calc(95vw * 2707 / 1608); /* 按宽高比调整高度 */
+            height: calc(95vw * 3014 / 1505); /* 按宽高比调整高度 */
         }
     }
 
     @media (max-height: 2707px) {
         .scratch-card {
             height: 95vh; /* 当高度超过 95% 时，限制为 95vh */
-            width: calc(95vh * 1608 / 2707); /* 按宽高比调整宽度 */
+            width: calc(95vh * 1505 / 3014); /* 按宽高比调整宽度 */
         }
     }
 
