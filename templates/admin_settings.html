@@ -5,17 +5,141 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理设置</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .glass-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            padding: 2rem;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 1rem;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        input, button {
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            color: #333;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        a {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            border-radius: 8px;
+            color: #333;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+
+        label {
+            text-align: left;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        input {
+            width: 100%;
+            text-align: left;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            color: #333;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            background: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+        }
+    </style>
 </head>
 <body>
-    <h2>管理员设置</h2>
-    <form method="POST" action="{{ url_for('admin_settings') }}">
-        <input type="number" step="0.01" name="first_prize" placeholder="一等奖概率" value="{{ prizes['一等奖'] }}" required>
-        <input type="number" step="0.01" name="second_prize" placeholder="二等奖概率" value="{{ prizes['二等奖'] }}" required>
-        <input type="number" step="0.01" name="third_prize" placeholder="三等奖概率" value="{{ prizes['三等奖'] }}" required>
-        <input type="number" step="0.01" name="thanks" placeholder="谢谢参与概率" value="{{ prizes['谢谢参与'] }}" required>
-        <input type="number" name="scratch_count" placeholder="刮刮乐总数" value="{{ scratch_count }}" required>
-        <button type="submit">保存设置</button>
-    </form>
-    <a href="{{ url_for('admin') }}">返回</a>
+    <div class="glass-container">
+        <h2>管理员设置</h2>
+        <form method="POST" action="{{ url_for('admin_settings') }}">
+            <div class="form-group">
+                <label for="total_tickets">总票数</label>
+                <input type="number" id="total_tickets" name="total_tickets" value="{{ settings['total_tickets'] }}" required>
+            </div>
+            <div class="form-group">
+                <label for="total_amount">总金额</label>
+                <input type="number" id="total_amount" name="total_amount" value="{{ settings['total_amount'] }}" required>
+            </div>
+            <div class="form-group">
+                <label for="target_winning_tickets">目标中奖票数</label>
+                <input type="number" id="target_winning_tickets" name="target_winning_tickets" value="{{ settings['target_winning_tickets'] }}" required>
+            </div>
+            <div class="form-group">
+                <label for="prize_amounts">奖金金额（每行一个金额）</label>
+                <textarea id="prize_amounts" name="prize_amounts" required>{{ settings['prize_amounts']|join('\n') }}</textarea>
+            </div>
+            <button type="submit">保存设置</button>
+        </form>
+        <a href="{{ url_for('admin') }}">返回</a>
+    </div>
 </body>
 </html>

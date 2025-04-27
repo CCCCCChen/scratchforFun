@@ -241,17 +241,36 @@ def admin():
 def admin_settings():
     if 'admin' not in session:
         return redirect(url_for('admin'))
-    if request.method == 'POST':
-        global prizes, scratch_count
-        prizes = {
-            '一等奖': float(request.form['first_prize']),
-            '二等奖': float(request.form['second_prize']),
-            '三等奖': float(request.form['third_prize']),
-            '谢谢参与': float(request.form['thanks'])
+    
+    try:
+        with open('setting.json', 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+    except FileNotFoundError:
+        settings = {
+            'total_tickets': 100,
+            'total_amount': 10000,
+            'target_winning_tickets': 50,
+            'prize_amounts': [10, 20, 30, 50, 100, 200, 500, 1000]
         }
-        scratch_count = int(request.form['scratch_count'])
+    
+    if request.method == 'POST':
+        # 更新设置
+        settings['total_tickets'] = int(request.form['total_tickets'])
+        settings['total_amount'] = int(request.form['total_amount'])
+        settings['target_winning_tickets'] = int(request.form['target_winning_tickets'])
+        
+        # 处理多行奖金金额输入
+        prize_amounts_text = request.form['prize_amounts']
+        prize_amounts = [int(amount.strip()) for amount in prize_amounts_text.split('\n') if amount.strip()]
+        settings['prize_amounts'] = prize_amounts
+        
+        # 保存设置到文件
+        with open('setting.json', 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=4, ensure_ascii=False)
+        
         return redirect(url_for('admin_settings'))
-    return render_template('admin_settings.html', prizes=prizes, scratch_count=scratch_count)
+    
+    return render_template('admin_settings.html', settings=settings)
 
 @app.route('/scratch', methods=['POST'])
 def scratch():
