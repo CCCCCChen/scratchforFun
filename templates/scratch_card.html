@@ -1,79 +1,58 @@
 <style>
-    /* 新增背景图片样式 */
-    .background-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        z-index: -1;
-    }
-    .background-top {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        max-height: calc(100vh - 5%);
-        background-image: url("{{ url_for('static', filename='images/top.png') }}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center top;
-    }
-    .background-bottom {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        max-height: calc(100vh - 5%);
-        background-image: url("{{ url_for('static', filename='images/bottom.png') }}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center bottom;
-    }
     .scratch-card {
-        width: 80%; /* 修改: 宽度改为页面宽度的 80% */
-        height: calc(80% * 3014 / 1505); /* 修改: 高度按宽高比计算 */
-        max-width: 1505px; /* 修改: 最大宽度限制为 1505px */
-        max-height: calc(100vh - 20px); /* 修改: 最大高度限制为视口高度减去 20px */
-        margin: 10px auto 0; /* 修改: 上下外边距调整 */
-        /*background: rgba(255, 255, 255, 0.1);*/
-        background-image: url("{{ url_for('static', filename='images/bottom.png') }}");
-
-        /* 设置多个背景图片，用逗号分隔 */
+        max-width: 95vw; /* 宽度不超过页面宽度的 95% */
+        max-height: 95vh; /* 高度不超过页面高度的 95% */
+        width: 80%; /* 默认宽度 */
+        height: calc(80% * 3014 / 1505); /* 默认高度，保持宽高比 */
+        margin: 10px auto 0;
         background-image: url("{{ url_for('static', filename='images/top.png') }}"), url("{{ url_for('static', filename='images/bottom.png') }}");
         background-repeat: no-repeat;
-        /* 设置每个背景图片的位置 */
         background-position: left top, left bottom;
-        /* 设置背景大小，这里使用cover让图片覆盖背景区域 */
         background-size: 100% auto;
+        position: relative;
+        overflow: hidden;
+    }
 
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        display: flex;
-        justify-content: center;
-        align-items: center;
+    .scratch-card::before {
+        content: "{{ ticket_number }}";
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
         font-size: 2rem;
-        color: #333;
-        cursor: pointer;
-        transition: all 0.3s ease;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
     }
 
-    /* 新增: 动态调整 scratch-card 的宽高 */
-    @media (max-width: 1505px) {
-        .scratch-card {
-            width: 95vw; /* 当宽度超过 95% 时，限制为 95vw */
-            height: calc(95vw * 3014 / 1505); /* 按宽高比调整高度 */
-        }
+    .scratch-card .grid-container {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: repeat(5, 1fr);
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 80%;
+        height: 80%;
     }
 
-    @media (max-height: 2707px) {
-        .scratch-card {
-            height: 95vh; /* 当高度超过 95% 时，限制为 95vh */
-            width: calc(95vh * 1505 / 3014); /* 按宽高比调整宽度 */
-        }
+    .scratch-card .grid-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .scratch-card .grid-item .number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .scratch-card .grid-item .amount {
+        font-size: 1rem;
+        color: white;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
     }
 
     .scratch-card:hover {
@@ -86,18 +65,20 @@
     }
 </style>
 <body>
-    
     <div class="glass-container">
         <h2>刮刮卡</h2>
-        <!-- 新增背景容器 -->
         <div class="background-container">
-            <div class="background-top"></div>
-                <div class="scratch-card" onclick="reveal()">
-                    {{ ticket_number }}
+            <div class="scratch-card" onclick="reveal()">
+                <div class="grid-container">
+                    {% for i in range(1, 26) %}
+                    <div class="grid-item">
+                        <div class="number">{{ '%02d' % i }}</div>
+                        <div class="amount">￥{{ random.randint(10, 10000) }}</div>
+                    </div>
+                    {% endfor %}
                 </div>
-            <div class="background-bottom"></div>
+            </div>
         </div>
-        
         <div id="result" style="display: none;">
             <h3>中奖金额: {{ amount }} 元</h3>
         </div>
@@ -105,14 +86,17 @@
             function reveal() {
                 const scratchCard = document.querySelector('.scratch-card');
                 const result = document.getElementById('result');
-                scratchCard.style.opacity = '0'; // 添加透明度变化
+                scratchCard.style.opacity = '0';
                 setTimeout(() => {
                     scratchCard.style.display = 'none';
                     result.style.display = 'block';
-                    result.style.opacity = '1'; // 添加透明度变化
-                }, 300); // 延迟 300ms 显示结果
+                    result.style.opacity = '1';
+                }, 300);
             }
         </script>
     </div>
 </body>
 </```
+```
+
+```

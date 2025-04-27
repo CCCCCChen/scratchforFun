@@ -8,6 +8,9 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 
+# 在 Flask 应用中注册 random 模块为全局变量
+app.jinja_env.globals.update(random=random)
+
 # 奖池设置
 prizes = {
     '一等奖': 0.1,
