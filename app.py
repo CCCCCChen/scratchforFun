@@ -38,46 +38,68 @@ user_scratch_count = {}
 
 # 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
 def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets):
-    # 按奖金从大到小排序
-    sorted_prizes = sorted(enumerate(prize_amounts), key=lambda x: x[1], reverse=True)
-    prize_frequencies = [0] * len(prize_amounts)
+    """
+    使用动态规划算法生成奖项频率分配
+    类似于find_combination_with_n_numbers的实现方式
+    """
+    # 输入验证
+    if target_winning_tickets <= 0 or total_amount <= 0:
+        return [0] * len(prize_amounts)
     
-    remaining_tickets = target_winning_tickets
-    remaining_amount = total_amount
+    # 创建奖项索引映射
+    prize_with_idx = [(i, amount) for i, amount in enumerate(prize_amounts)]
     
-    # 从最大奖项开始分配
-    for i, (original_idx, prize_amount) in enumerate(sorted_prizes):
-        if remaining_tickets <= 0 or remaining_amount <= 0:
+    # dp[i][j] 表示是否能用 j 张票凑出金额 i
+    dp = [[False] * (target_winning_tickets + 1) for _ in range(total_amount + 1)]
+    dp[0][0] = True
+    
+    # prev[i][j] 记录到达金额 i 使用 j 张票时的最后一个奖项索引
+    prev = [[None] * (target_winning_tickets + 1) for _ in range(total_amount + 1)]
+    
+    # 动态规划填充
+    for amount in range(1, total_amount + 1):
+        for tickets in range(1, target_winning_tickets + 1):
+            for prize_idx, prize_amount in prize_with_idx:
+                if prize_amount <= amount and dp[amount - prize_amount][tickets - 1]:
+                    dp[amount][tickets] = True
+                    prev[amount][tickets] = prize_idx
+                    break  # 找到即可停止
+    
+    # 寻找最优解（尽可能使用目标票数）
+    best_tickets = 0
+    best_amount = 0
+    
+    for tickets in range(target_winning_tickets, 0, -1):
+        for amount in range(total_amount, 0, -1):
+            if dp[amount][tickets]:
+                best_tickets = tickets
+                best_amount = amount
+                break
+        if best_tickets > 0:
             break
-            
-        # 计算当前奖项的分配范围
-        if i == len(sorted_prizes) - 1:  # 最后一个奖项（最小奖项）
-            # 将所有剩余票数分配给最小奖项
-            allocated_tickets = remaining_tickets
-        else:
-            # 计算当前奖项最多能分配的票数
-            max_tickets_by_amount = remaining_amount // prize_amount
-            max_tickets_by_remaining = remaining_tickets
-            
-            # 设定分配范围：0 到 min(剩余金额/当前奖项金额, 剩余票数)
-            max_possible = min(max_tickets_by_amount, max_tickets_by_remaining)
-            
-            if max_possible > 0:
-                # 随机分配当前奖项的票数
-                allocated_tickets = random.randint(0, max_possible)
-                print(f"分配 {allocated_tickets} 张 {prize_amount} 元的奖项")
-            else:
-                allocated_tickets = 0
-        
-        # 更新分配结果
-        prize_frequencies[original_idx] = allocated_tickets
-        remaining_tickets -= allocated_tickets
-        remaining_amount -= allocated_tickets * prize_amount
     
-    # 如果还有剩余票数，分配给最小奖项
-    if remaining_tickets > 0:
-        min_prize_idx = prize_amounts.index(min(prize_amounts))
-        prize_frequencies[min_prize_idx] += remaining_tickets
+    # 如果找不到解，返回空分配
+    if best_tickets == 0:
+        return [0] * len(prize_amounts)
+    
+    # 回溯构建奖项分配
+    prize_frequencies = [0] * len(prize_amounts)
+    current_amount = best_amount
+    current_tickets = best_tickets
+    
+    while current_tickets > 0 and current_amount > 0:
+        last_prize_idx = prev[current_amount][current_tickets]
+        if last_prize_idx is None:
+            break
+        
+        prize_frequencies[last_prize_idx] += 1
+        current_amount -= prize_amounts[last_prize_idx]
+        current_tickets -= 1
+    
+    print(f"动态规划分配结果: 使用 {best_tickets} 张票，总金额 {best_amount} 元")
+    for i, freq in enumerate(prize_frequencies):
+        if freq > 0:
+            print(f"奖项 {prize_amounts[i]} 元: {freq} 张")
     
     return prize_frequencies
 
