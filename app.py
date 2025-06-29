@@ -1,5 +1,5 @@
-import os
 import json
+import os
 import random
 import sqlite3
 
@@ -20,14 +20,66 @@ prizes = {
 }
 scratch_count = 100
 
-# 用户数据库（简易版）
-users = {
-    'user1': 'password1',
-    'user2': 'password2'
-}
+# 从数据库获取用户信息的函数
+def get_user_from_db(username):
+    try:
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        cursor.execute('SELECT username, password FROM users WHERE username = ?', (username,))
+        user = cursor.fetchone()
+        conn.close()
+        return user
+    except sqlite3.Error as e:
+        print(f"获取用户信息错误: {e}")
+        return None
 
 # 用户刮刮乐数量记录
 user_scratch_count = {}
+
+# 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
+def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets):
+    # 按奖金从大到小排序
+    sorted_prizes = sorted(enumerate(prize_amounts), key=lambda x: x[1], reverse=True)
+    prize_frequencies = [0] * len(prize_amounts)
+    
+    remaining_tickets = target_winning_tickets
+    remaining_amount = total_amount
+    
+    # 从最大奖项开始分配
+    for i, (original_idx, prize_amount) in enumerate(sorted_prizes):
+        if remaining_tickets <= 0 or remaining_amount <= 0:
+            break
+            
+        # 计算当前奖项的分配范围
+        if i == len(sorted_prizes) - 1:  # 最后一个奖项（最小奖项）
+            # 将所有剩余票数分配给最小奖项
+            allocated_tickets = remaining_tickets
+        else:
+            # 计算当前奖项最多能分配的票数
+            max_tickets_by_amount = remaining_amount // prize_amount
+            max_tickets_by_remaining = remaining_tickets
+            
+            # 设定分配范围：0 到 min(剩余金额/当前奖项金额, 剩余票数)
+            max_possible = min(max_tickets_by_amount, max_tickets_by_remaining)
+            
+            if max_possible > 0:
+                # 随机分配当前奖项的票数
+                allocated_tickets = random.randint(0, max_possible)
+                print(f"分配 {allocated_tickets} 张 {prize_amount} 元的奖项")
+            else:
+                allocated_tickets = 0
+        
+        # 更新分配结果
+        prize_frequencies[original_idx] = allocated_tickets
+        remaining_tickets -= allocated_tickets
+        remaining_amount -= allocated_tickets * prize_amount
+    
+    # 如果还有剩余票数，分配给最小奖项
+    if remaining_tickets > 0:
+        min_prize_idx = prize_amounts.index(min(prize_amounts))
+        prize_frequencies[min_prize_idx] += remaining_tickets
+    
+    return prize_frequencies
 
 # 初始化判断逻辑
 def initialize_app():
@@ -51,82 +103,83 @@ def initialize_app():
             target_winning_tickets = 50
         
         # 2. 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
-        def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets):
-            prize_frequencies = [1] * len(prize_amounts)  # 修改：初始值设为1
-            remaining_tickets = target_winning_tickets - len(prize_amounts)  # 修改：减去已分配的票数
-            remaining_amount = total_amount - sum(prize_amounts)  # 修改：减去已分配的金额
-            
-            # 随机分配剩余的中奖票数
-            for i in range(len(prize_amounts) - 1, 0, -1):
-                max_possible = min(remaining_tickets, remaining_amount // prize_amounts[i])
-                if max_possible > 0:  # 确保 max_possible 大于 0
-                    prize_frequencies[i] += random.randint(0, max_possible)  # 修改：累加分配的票数
-                    remaining_tickets -= prize_frequencies[i] - 1  # 修改：减去已分配的票数
-                    remaining_amount -= prize_frequencies[i] * prize_amounts[i]  # 修改：减去已分配的金额
-            
-            # 分配剩余的中奖票数
-            prize_frequencies[0] += remaining_tickets  # 修改：累加分配的票数
-            
-            # 调整以确保总金额匹配
-            while remaining_amount > 0:
-                for i in range(len(prize_amounts)):
-                    if remaining_amount >= prize_amounts[i]:
-                        prize_frequencies[i] += 1
-                        remaining_amount -= prize_amounts[i]
-            
-            return prize_frequencies
         
         prize_frequencies = generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets)
         print(f"生成的中奖金额频数列表: {prize_frequencies}")
         
         # 3. 创建数据库并保存中奖金额频数
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS prizes (
-                id INTEGER PRIMARY KEY,
-                amount REAL,
-                frequency INTEGER
-            )
-        ''')
-        for i, freq in enumerate(prize_frequencies):
-            cursor.execute('INSERT INTO prizes (amount, frequency) VALUES (?, ?)', (prize_amounts[i], freq))
-        conn.commit()
+        try:
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS prizes (
+                    id INTEGER PRIMARY KEY,
+                    amount REAL,
+                    frequency INTEGER
+                )
+            ''')
+            for i, freq in enumerate(prize_frequencies):
+                cursor.execute('INSERT INTO prizes (amount, frequency) VALUES (?, ?)', (prize_amounts[i], freq))
+            conn.commit()
+            
+            # 添加创建 users 表的逻辑
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE,
+                    password TEXT,
+                    spent_amount REAL DEFAULT 0
+                )
+            ''')
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"数据库操作错误: {e}")
+            if 'conn' in locals():
+                conn.rollback()
+        finally:
+            if 'conn' in locals():
+                conn.close()
         
-        # 添加创建 users 表的逻辑
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                username TEXT UNIQUE,
-                password TEXT,
-                spent_amount REAL DEFAULT 0
-            )
-        ''')
-        conn.commit()
-        
-        # 4. 随机生成中奖票数个不重复的整数列表
-        winning_ticket_indices = random.sample(range(1, total_tickets + 1), target_winning_tickets)
-        
-        # 5. 生成票编号并初始化金额和状态
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tickets (
-                id INTEGER PRIMARY KEY,
-                ticket_number TEXT,
-                amount REAL,
-                is_selected INTEGER DEFAULT 0
-            )
-        ''')
-        for i in range(1, total_tickets + 1):
-            ticket_number = f"94-1219-00000010-{i:03d}"
-            amount = 0
-            if i in winning_ticket_indices:
-                prize_index = random.randint(0, len(prize_amounts) - 1)
-                amount = prize_amounts[prize_index]
-                prize_frequencies[prize_index] -= 1
-            cursor.execute('INSERT INTO tickets (ticket_number, amount) VALUES (?, ?)', (ticket_number, amount))
-        conn.commit()
-        
-        conn.close()
+            # 4. 随机生成中奖票数个不重复的整数列表
+            winning_ticket_indices = random.sample(range(1, total_tickets + 1), target_winning_tickets)
+            
+            # 5. 生成票编号并初始化金额和状态
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tickets (
+                    id INTEGER PRIMARY KEY,
+                    ticket_number TEXT,
+                    amount REAL,
+                    is_selected INTEGER DEFAULT 0
+                )
+            ''')
+            
+            # 创建奖金池用于分配
+            prize_pool = []
+            for i, freq in enumerate(prize_frequencies):
+                prize_pool.extend([prize_amounts[i]] * freq)
+            random.shuffle(prize_pool)
+            
+            prize_index = 0
+            for i in range(1, total_tickets + 1):
+                ticket_number = f"94-1219-00000010-{i:03d}"
+                amount = 0
+                if i in winning_ticket_indices and prize_index < len(prize_pool):
+                    amount = prize_pool[prize_index]
+                    prize_index += 1
+                cursor.execute('INSERT INTO tickets (ticket_number, amount) VALUES (?, ?)', (ticket_number, amount))
+            
+            # 初始化默认用户到数据库
+            default_users = [
+                ('user1', 'password1'),
+                ('user2', 'password2')
+            ]
+            for username, password in default_users:
+                try:
+                    cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+                except sqlite3.IntegrityError:
+                    # 用户已存在，跳过
+                    pass
+            conn.commit()
         print("初始化完成。")
     else:
         print("已存在初始化文件，跳过初始化逻辑。")
@@ -145,21 +198,28 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username in users and users[username] == password:
+        
+        # 从数据库验证用户
+        user = get_user_from_db(username)
+        if user and user[1] == password:  # user[1] 是密码
             session['username'] = username
             if username not in user_scratch_count:
                 user_scratch_count[username] = 0
             
             # 初始化用户信息（从数据库读取）
-            conn = sqlite3.connect('xx.sqlite')
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
-            user_info = cursor.fetchone()
-            conn.close()
-            
-            if user_info:
-                session['spent_amount'] = user_info[3]  # 假设数据库中第四列为花费金额
-            else:
+            try:
+                conn = sqlite3.connect('xx.sqlite')
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+                user_info = cursor.fetchone()
+                conn.close()
+                
+                if user_info:
+                    session['spent_amount'] = user_info[3]  # 数据库中第四列为花费金额
+                else:
+                    session['spent_amount'] = 0
+            except sqlite3.Error as e:
+                print(f"读取用户信息错误: {e}")
                 session['spent_amount'] = 0
             
             return redirect(url_for('dashboard'))  # 登录后跳转到日历卡片页面
@@ -172,12 +232,27 @@ def dashboard():
     if 'username' not in session:
         return redirect(url_for('login'))
     
-    # 查询未被选中的票
-    conn = sqlite3.connect('xx.sqlite')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, ticket_number FROM tickets WHERE is_selected = 0 ORDER BY id')
-    tickets = cursor.fetchall()
-    conn.close()
+    # 查询未被选中的票和奖池剩余金额
+    try:
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, ticket_number FROM tickets WHERE is_selected = 0 ORDER BY id')
+        tickets = cursor.fetchall()
+        
+        # 计算奖池剩余金额（总金额 - 已中奖金额）
+        cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1 AND amount > 0')
+        won_amount = cursor.fetchone()[0] or 0
+        
+        # 从设置文件获取总金额
+        with open('setting.json', 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+        remaining_prize_pool = settings['total_amount'] - won_amount
+        
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"查询票据错误: {e}")
+        tickets = []
+        remaining_prize_pool = 0
     
     # 分页逻辑
     page = int(request.args.get('page', 1))
@@ -186,39 +261,185 @@ def dashboard():
     end = start + per_page
     tickets_on_page = tickets[start:end]
     
-    return render_template('dashboard.html', tickets=tickets_on_page, page=page)
+    return render_template('dashboard.html', tickets=tickets_on_page, page=page, remaining_prize_pool=remaining_prize_pool)
 
 @app.route('/scratch_card/<int:ticket_id>')
 def scratch_card(ticket_id):
     if 'username' not in session:
         return redirect(url_for('login'))
     
-    # 更新票的状态为已选中
-    conn = sqlite3.connect('xx.sqlite')
-    cursor = conn.cursor()
-    cursor.execute('UPDATE tickets SET is_selected = 1 WHERE id = ?', (ticket_id,))
-    conn.commit()
+    try:
+        # 查询票的详细信息（不立即标记为已使用）
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        cursor.execute('SELECT ticket_number, amount, is_selected FROM tickets WHERE id = ?', (ticket_id,))
+        ticket_info = cursor.fetchone()
+        conn.close()
+        
+        if ticket_info:
+            ticket_number, amount, is_selected = ticket_info
+            if is_selected:
+                return '该票已被使用', 400
+            
+            # 生成刮刮卡内容
+            scratch_data = generate_scratch_card_data(amount)
+            return render_template('scratch_card.html', 
+                                 ticket_number=ticket_number, 
+                                 amount=amount, 
+                                 ticket_id=ticket_id,
+                                 scratch_data=scratch_data)
+        else:
+            return '票不存在', 404
+    except sqlite3.Error as e:
+        print(f"查询票据错误: {e}")
+        return '系统错误，请稍后重试', 500
+
+@app.route('/complete_scratch/<int:ticket_id>', methods=['POST'])
+def complete_scratch(ticket_id):
+    if 'username' not in session:
+        return jsonify({'success': False, 'message': '请先登录'}), 403
     
-    # 查询票的详细信息
-    cursor.execute('SELECT ticket_number, amount FROM tickets WHERE id = ?', (ticket_id,))
-    ticket_info = cursor.fetchone()
-    conn.close()
+    try:
+        # 标记票为已使用
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE tickets SET is_selected = 1 WHERE id = ? AND is_selected = 0', (ticket_id,))
+        affected_rows = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if affected_rows > 0:
+            return jsonify({'success': True, 'message': '刮奖完成'})
+        else:
+            return jsonify({'success': False, 'message': '票已被使用或不存在'}), 400
+    except sqlite3.Error as e:
+        print(f"完成刮奖错误: {e}")
+        return jsonify({'success': False, 'message': '系统错误'}), 500
+
+def find_combination_with_n_numbers(nums, m, n):
+    m = int(round(m)) if m is not None else 0
+    n = int(n)
+    # dp[i][j] 表示是否能用 j 个数凑出金额 i
+    dp = [[False] * (n + 1) for _ in range(m + 1)]
+    dp[0][0] = True
+
+    # prev[i][j] 记录到达金额 i 使用 j 个数时的最后一个数字
+    prev = [[None] * (n + 1) for _ in range(m + 1)]
+
+    # 动态规划填充
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            for num in nums:
+                if num <= i and dp[i - num][j - 1]:
+                    dp[i][j] = True
+                    prev[i][j] = num
+                    break  # 找到即可停止
+
+    # 如果无法用 n 个数凑出 m
+    if not dp[m][n]:
+        return False, []
+
+    # 回溯找出组合
+    combination = []
+    current_amount = m
+    current_count = n
+
+    while current_count > 0 and current_amount > 0:
+        last_num = prev[current_amount][current_count]
+        if last_num is None:
+            break
+        combination.append(last_num)
+        current_amount -= last_num
+        current_count -= 1
+
+    return True, combination
+
+
+def generate_scratch_card_data(total_amount):
+    """生成刮刮卡的25个格子数据"""
+    import random
     
-    if ticket_info:
-        ticket_number, amount = ticket_info
-        return render_template('scratch_card.html', ticket_number=ticket_number, amount=amount)
-    else:
-        return '票不存在', 404
+    # 可选的金额列表
+    amount_options = [10, 20, 30, 50, 100,200,500, 1000, 2000, 5000]
+    
+    # 随机决定中奖位置数量 (0-25)
+    winning_positions = random.randint(0, min(25, total_amount // min(amount_options)))
+    print(total_amount, "-total_amount :",winning_positions)
+    
+    # 初始化25个格子
+    grid_data = []
+    options = [i for i in range(1, 999) if i not in {7, 77, 777}]
+    for i in range(25):
+        grid_data.append({
+            # 'number': random.randint(1, 99),
+            'number': random.choice(options),
+            'amount': random.choice(amount_options),
+            'is_winning': False,
+            'multiplier': 1
+        })
+    
+    if winning_positions > 0 and total_amount > 0:
+        # 使用动态规划函数寻找精确的货币组合
+        while True:
+            # 选择中奖位置
+            winning_indices = random.sample(range(25), winning_positions)
+            print("winning index: ",winning_indices)
+            
+            # 使用find_combination_with_n_numbers函数
+            success, result = find_combination_with_n_numbers(amount_options, total_amount, winning_positions)
+            
+            if not success:
+                # 如果无法找到组合，重新随机winning_positions
+                winning_positions = random.randint(0, min(25, total_amount // min(amount_options)))
+                print(f"重新生成中奖位置数量: {winning_positions}")
+                continue
+            else:
+                # 根据result分配奖金
+                print(f"找到精确组合: {result}")
+                
+                # 创建金额分配列表
+                amounts_to_assign = result
+                
+                # 随机打乱分配顺序
+                random.shuffle(amounts_to_assign)
+                
+                # 分配给中奖位置
+                for i, idx in enumerate(winning_indices):
+                    if i < len(amounts_to_assign):
+                        amount = amounts_to_assign[i]
+                        grid_data[idx]['amount'] = amount
+                        grid_data[idx]['is_winning'] = True
+                        
+                        # 根据位置索引确定倍数和数字
+                        grid_data[idx]['multiplier'] = 1
+                        grid_data[idx]['number'] = 7
+                
+                break
+    
+    return grid_data
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username in users:
+        
+        # 检查用户是否已存在
+        existing_user = get_user_from_db(username)
+        if existing_user:
             return '用户名已存在'
-        users[username] = password
-        return redirect(url_for('login'))
+        
+        # 将新用户添加到数据库
+        try:
+            conn = sqlite3.connect('xx.sqlite')
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+            conn.commit()
+            conn.close()
+            return redirect(url_for('login'))
+        except sqlite3.Error as e:
+            print(f"注册用户错误: {e}")
+            return '注册失败，请稍后重试'
     return render_template('register.html')
 
 @app.route('/logout')
@@ -228,6 +449,10 @@ def logout():
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
+    # 检查是否已经是管理员登录状态
+    if 'admin' in session:
+        return redirect(url_for('admin_settings'))
+    
     if request.method == 'POST':
         password = request.form['password']
         if password == 'admin123':  # 简易密码
@@ -253,6 +478,47 @@ def admin_settings():
             'prize_amounts': [10, 20, 30, 50, 100, 200, 500, 1000]
         }
     
+    # 查询用户统计和奖池信息
+    user_stats = []
+    remaining_prize_pool = 0
+    remaining_winning_tickets = 0
+    winning_tickets = []
+    
+    try:
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        
+        # 获取所有用户（由于tickets表没有user_id字段，暂时显示基础信息）
+        cursor.execute('SELECT username FROM users')
+        users = cursor.fetchall()
+        
+        # 计算总的已刮卡数和总奖金（所有用户共享）
+        cursor.execute('SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1')
+        total_scratched, total_winnings = cursor.fetchone()
+        
+        # 为每个用户创建统计数据（平均分配或显示总数）
+        user_stats = []
+        for user in users:
+            user_stats.append((user[0], total_scratched or 0, total_winnings or 0))
+        
+        # 计算奖池剩余金额（总金额 - 已中奖金额）
+        cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1 AND amount > 0')
+        won_amount = cursor.fetchone()[0] or 0
+        remaining_prize_pool = settings['total_amount'] - won_amount
+        
+        # 计算剩余能中奖券数（目标中奖票数 - 已中奖票数）
+        cursor.execute('SELECT COUNT(*) FROM tickets WHERE is_selected = 1 AND amount > 0')
+        won_tickets = cursor.fetchone()[0] or 0
+        remaining_winning_tickets = settings['target_winning_tickets'] - won_tickets
+        
+        # 获取所有中奖票据信息（包括已刮和未刮的）
+        cursor.execute('SELECT ticket_number, amount, is_selected FROM tickets WHERE amount > 0 ORDER BY amount DESC, ticket_number')
+        winning_tickets = cursor.fetchall()
+        
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"查询统计信息错误: {e}")
+    
     if request.method == 'POST':
         # 更新设置
         settings['total_tickets'] = int(request.form['total_tickets'])
@@ -268,9 +534,83 @@ def admin_settings():
         with open('setting.json', 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=4, ensure_ascii=False)
         
+        # 重置所有用户的刮卡记录并重新初始化
+        try:
+            conn = sqlite3.connect('xx.sqlite')
+            cursor = conn.cursor()
+            
+            # 删除所有票据记录
+            cursor.execute('DELETE FROM tickets')
+            
+            # 重新生成奖品频率
+            total_tickets = settings['total_tickets']
+            total_amount = settings['total_amount']
+            prize_amounts = settings['prize_amounts']
+            target_winning_tickets = settings['target_winning_tickets']
+            prize_frequencies = generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets)
+            
+            # 重新插入奖品数据
+            cursor.execute('DELETE FROM prizes')
+            for i, amount in enumerate(prize_amounts):
+                frequency = prize_frequencies[i] if i < len(prize_frequencies) else 0
+                cursor.execute('INSERT INTO prizes (amount, frequency) VALUES (?, ?)', (amount, frequency))
+            
+            # 重新生成票据
+            total_tickets = settings['total_tickets']
+            target_winning_tickets = settings['target_winning_tickets']
+            
+            # 生成中奖金额列表
+            winning_amounts = []
+            for i, amount in enumerate(prize_amounts):
+                frequency = prize_frequencies[i] if i < len(prize_frequencies) else 0
+                winning_amounts.extend([amount] * frequency)
+            
+            # 随机选择中奖票据
+            import random
+            random.shuffle(winning_amounts)
+            selected_winning_amounts = winning_amounts[:target_winning_tickets]
+            
+            # 生成所有票据编号
+            all_ticket_numbers = [f"T{i+1:04d}" for i in range(total_tickets)]
+            
+            # 随机选择中奖票据的编号
+            winning_ticket_numbers = random.sample(all_ticket_numbers, target_winning_tickets)
+            print(f"中奖票据编号：{winning_ticket_numbers}")    
+            
+            # 创建票据编号到奖金的映射
+            ticket_amounts = {}
+            
+            # 分配中奖票据
+            for i, ticket_number in enumerate(winning_ticket_numbers):
+                amount = selected_winning_amounts[i] if i < len(selected_winning_amounts) else 0
+                ticket_amounts[ticket_number] = amount
+            
+            # 分配非中奖票据
+            for ticket_number in all_ticket_numbers:
+                if ticket_number not in ticket_amounts:
+                    ticket_amounts[ticket_number] = 0
+            
+            # 插入所有票据
+            for ticket_number in all_ticket_numbers:
+                amount = ticket_amounts[ticket_number]
+                cursor.execute('INSERT INTO tickets (ticket_number, amount, is_selected) VALUES (?, ?, 0)', 
+                             (ticket_number, amount))
+            
+            conn.commit()
+            conn.close()
+            
+            print("刮刮卡系统已重置并重新初始化")
+        except sqlite3.Error as e:
+            print(f"重置系统错误: {e}")
+        
         return redirect(url_for('admin_settings'))
     
-    return render_template('admin_settings.html', settings=settings)
+    return render_template('admin_settings.html', 
+                         settings=settings, 
+                         user_stats=user_stats,
+                         remaining_prize_pool=remaining_prize_pool,
+                         remaining_winning_tickets=remaining_winning_tickets,
+                         winning_tickets=winning_tickets)
 
 @app.route('/scratch', methods=['POST'])
 def scratch():
@@ -287,5 +627,5 @@ def remaining_count():
     return jsonify({'remainingCount': scratch_count - sum(user_scratch_count.values())})
 
 if __name__ == '__main__':
-    app.run(debug=True)
-    # app.run(host='0.0.0.0', port=5000, debug=False)
+    # app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

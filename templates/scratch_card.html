@@ -111,10 +111,10 @@
                 <div class="top-bg"></div>
                 <div class="bottom-bg"></div>
                 <div class="grid-container">
-                    {% for i in range(1, 26) %}
-                    <div class="grid-item">
-                        <div class="number">{{ '%02d' % i }}</div>
-                        <div class="amount">￥{{ random.randint(10, 10000) }}</div>
+                    {% for item in scratch_data %}
+                    <div class="grid-item" data-winning="{{ item.is_winning|lower }}" data-multiplier="{{ item.multiplier }}">
+                        <div class="number {% if item.number == 7 %}lucky-number-7{% elif item.number == 77 %}lucky-number-77{% elif item.number == 777 %}lucky-number-777{% endif %}">{{ item.number }}</div>
+                        <div class="amount">￥{{ item.amount }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -177,8 +177,51 @@
                     }
 
                     // 如果刮开面积超过50%，移除涂层
-                    if (scratchedPixels / totalPixels > 0.5) {
+                    if (scratchedPixels / totalPixels > 0.8) {
                         canvas.style.display = 'none';
+                        
+                        // 计算实际中奖金额
+                        let totalWinning = 0;
+                        const gridItems = document.querySelectorAll('.grid-item');
+                        gridItems.forEach(item => {
+                            if (item.dataset.winning === 'true') {
+                                const amount = parseInt(item.querySelector('.amount').textContent.replace('￥', ''));
+                                const multiplier = parseInt(item.dataset.multiplier);
+                                totalWinning += amount * multiplier;
+                            }
+                        });
+                        
+                        // 显示刮奖结果弹窗
+                        let message = '';
+                        if (totalWinning > 0) {
+                            message = '恭喜您中奖了！\n奖金：￥' + totalWinning;
+                        } else {
+                            message = '谢谢惠顾！\n本次未中奖，请再接再厉！';
+                        }
+                        
+                        // 弹出提示
+                        alert(message);
+                        
+                        // 弹窗关闭后自动返回dashboard
+                        var dashboardUrl = '{{ url_for("dashboard") }}';
+                        window.location.href = dashboardUrl;
+                        
+                        // 调用后端接口标记票为已使用
+                        fetch('/complete_scratch/{{ ticket_id }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (!data.success) {
+                                console.error('标记票据失败:', data.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('请求失败:', error);
+                        });
                     }
                 }
 
