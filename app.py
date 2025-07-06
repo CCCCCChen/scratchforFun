@@ -37,17 +37,35 @@ def get_user_from_db(username):
 user_scratch_count = {}
 
 # 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
-def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets):
+def generate_prize_frequencies(prize_amounts, target_winning_tickets, total_amount):
     """
-    使用动态规划算法生成奖项频率分配
-    类似于find_combination_with_n_numbers的实现方式
+    使用动态规划算法生成奖项频率分配，优化中间奖项分配
+    减少最大奖和最小奖的数量，增加中间奖的数量
     """
     # 输入验证
     if target_winning_tickets <= 0 or total_amount <= 0:
         return [0] * len(prize_amounts)
     
-    # 创建奖项索引映射
-    prize_with_idx = [(i, amount) for i, amount in enumerate(prize_amounts)]
+    # 计算中间奖项的权重策略
+    n = len(prize_amounts)
+    if n <= 2:
+        # 如果奖项太少，使用原始排序
+        prize_with_idx = [(i, amount) for i, amount in enumerate(prize_amounts)]
+    else:
+        # 创建权重映射，中间奖项权重更高
+        weights = []
+        for i, amount in enumerate(prize_amounts):
+            if i == 0 or i == n - 1:  # 最小奖和最大奖
+                weight = 0.3  # 降低权重
+            elif i == 1 or i == n - 2:  # 次小奖和次大奖
+                weight = 0.7
+            else:  # 中间奖项
+                weight = 1.0  # 最高权重
+            weights.append((i, amount, weight))
+        
+        # 按权重和奖金综合排序，优先选择中间奖项
+        prize_with_idx = sorted(weights, key=lambda x: (-x[2], x[1]))
+        prize_with_idx = [(idx, amount) for idx, amount, _ in prize_with_idx]
     
     # dp[i][j] 表示是否能用 j 张票凑出金额 i
     dp = [[False] * (target_winning_tickets + 1) for _ in range(total_amount + 1)]
@@ -56,7 +74,7 @@ def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, targe
     # prev[i][j] 记录到达金额 i 使用 j 张票时的最后一个奖项索引
     prev = [[None] * (target_winning_tickets + 1) for _ in range(total_amount + 1)]
     
-    # 动态规划填充
+    # 动态规划填充，优先使用权重高的奖项
     for amount in range(1, total_amount + 1):
         for tickets in range(1, target_winning_tickets + 1):
             for prize_idx, prize_amount in prize_with_idx:
@@ -96,12 +114,78 @@ def generate_prize_frequencies(total_tickets, total_amount, prize_amounts, targe
         current_amount -= prize_amounts[last_prize_idx]
         current_tickets -= 1
     
-    print(f"动态规划分配结果: 使用 {best_tickets} 张票，总金额 {best_amount} 元")
+    # 后处理：进一步优化分配，减少极值奖项
+    prize_frequencies = optimize_prize_distribution(prize_frequencies, prize_amounts, target_winning_tickets, total_amount)
+    
+    print(f"优化后分配结果: 使用 {sum(prize_frequencies)} 张票，总金额 {sum(f * prize_amounts[i] for i, f in enumerate(prize_frequencies))} 元")
     for i, freq in enumerate(prize_frequencies):
         if freq > 0:
             print(f"奖项 {prize_amounts[i]} 元: {freq} 张")
     
     return prize_frequencies
+
+def optimize_prize_distribution(frequencies, prize_amounts, target_tickets, total_amount):
+    """
+    后处理优化：减少最大奖和最小奖的数量，增加中间奖
+    """
+    n = len(prize_amounts)
+    if n <= 2:
+        return frequencies
+    
+    optimized = frequencies.copy()
+    max_iterations = 10  # 防止无限循环
+    
+    for _ in range(max_iterations):
+        # 找到最小奖和最大奖的索引
+        min_idx = 0
+        max_idx = n - 1
+        
+        # 如果最小奖或最大奖数量过多，尝试转换为中间奖
+        total_extreme = optimized[min_idx] + optimized[max_idx]
+        total_middle = sum(optimized[1:n-1])
+        
+        if total_extreme > total_middle and total_extreme > 2:
+            # 尝试将一个极值奖转换为中间奖
+            if optimized[min_idx] > 0 and optimized[max_idx] > 0:
+                # 选择数量更多的极值奖进行转换
+                source_idx = min_idx if optimized[min_idx] >= optimized[max_idx] else max_idx
+            elif optimized[min_idx] > 0:
+                source_idx = min_idx
+            elif optimized[max_idx] > 0:
+                source_idx = max_idx
+            else:
+                break
+            
+            # 寻找合适的中间奖项进行替换
+            source_amount = prize_amounts[source_idx]
+            for target_idx in range(1, n-1):  # 中间奖项
+                target_amount = prize_amounts[target_idx]
+                
+                # 计算可以转换的数量
+                if source_amount > target_amount:
+                    # 一个大奖可以换多个小奖
+                    ratio = source_amount // target_amount
+                    if ratio > 1 and optimized[source_idx] > 0:
+                        # 检查是否超出票数限制
+                        additional_tickets = ratio - 1
+                        current_total_tickets = sum(optimized)
+                        if current_total_tickets + additional_tickets <= target_tickets:
+                            optimized[source_idx] -= 1
+                            optimized[target_idx] += ratio
+                            break
+                elif source_amount < target_amount:
+                    # 多个小奖可以换一个大奖
+                    ratio = target_amount // source_amount
+                    if ratio > 1 and optimized[source_idx] >= ratio:
+                        # 检查票数是否足够
+                        reduced_tickets = ratio - 1
+                        optimized[source_idx] -= ratio
+                        optimized[target_idx] += 1
+                        break
+        else:
+            break  # 分配已经比较均衡
+    
+    return optimized
 
 # 初始化判断逻辑
 def initialize_app():
@@ -126,7 +210,7 @@ def initialize_app():
         
         # 2. 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
         
-        prize_frequencies = generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets)
+        prize_frequencies = generate_prize_frequencies(prize_amounts, target_winning_tickets, total_amount)
         print(f"生成的中奖金额频数列表: {prize_frequencies}")
         
         # 3. 创建数据库并保存中奖金额频数
@@ -569,7 +653,7 @@ def admin_settings():
             total_amount = settings['total_amount']
             prize_amounts = settings['prize_amounts']
             target_winning_tickets = settings['target_winning_tickets']
-            prize_frequencies = generate_prize_frequencies(total_tickets, total_amount, prize_amounts, target_winning_tickets)
+            prize_frequencies = generate_prize_frequencies(prize_amounts, target_winning_tickets, total_amount)
             
             # 重新插入奖品数据
             cursor.execute('DELETE FROM prizes')
