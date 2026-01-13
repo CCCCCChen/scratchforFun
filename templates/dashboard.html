@@ -2,54 +2,677 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>刮刮卡选择</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>选择您的幸运卡片</title>
+    <!-- Swiper CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2.0">
     <style>
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        .card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            padding: 1rem;
-            text-align: center;
+
+        /* 顶部导航栏 */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            color: white;
+            z-index: 100;
+            background: rgba(0,0,0,0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        .navbar .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .navbar .controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .icon-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background 0.3s;
         }
-        .card:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+
+        .icon-btn:hover {
+            background: rgba(255,255,255,0.4);
+        }
+
+        .header-info {
+            text-align: center;
+            color: #fff;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            flex-shrink: 0;
+        }
+
+        .header-info h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 300;
+        }
+
+        .header-info .prize-pool {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #FFD700;
+            margin-top: 5px;
+        }
+
+        /* 搜索框样式 */
+        .search-box {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            width: 80%;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+            position: relative;
+        }
+
+        .search-box input {
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.2);
+            color: white;
+            flex: 1;
+            backdrop-filter: blur(5px);
+            outline: none;
+        }
+        
+        .search-box input::placeholder {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .search-box button {
+            background: rgba(255,255,255,0.25);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+        }
+
+        .search-error {
+            color: #ff4d4d;
+            text-align: center;
+            height: 20px;
+            font-size: 0.9rem;
+            margin-top: 8px;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            transition: opacity 0.3s;
+        }
+
+        /* 视图容器 */
+        .view-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Swiper 样式 */
+        .swiper {
+            width: 300px;
+            height: 420px;
+        }
+
+        .swiper-slide {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 18px;
+            font-size: 22px;
+            font-weight: bold;
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.85); /* 移除模糊，提高不透明度 */
+            /* backdrop-filter: blur(10px); 移除高斯模糊以提升性能 */
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 10px 0 rgba(0, 0, 0, 0.2); /* 减小阴影半径 */
+            cursor: pointer;
+            overflow: hidden;
+            flex-direction: column;
+            will-change: transform; /* 提示浏览器优化 */
+        }
+        
+        .card-pattern {
+            width: 100%;
+            height: 100%;
+            background-image: url("{{ url_for('static', filename='images/top.png') }}");
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .ticket-number {
+            position: absolute;
+            bottom: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            letter-spacing: 1px;
+        }
+
+        /* Grid 样式 */
+        .grid-view {
+            display: none; /* 默认隐藏 */
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            overflow-y: auto;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            grid-auto-rows: 140px;
+            gap: 15px;
+            align-content: start;
+        }
+
+        .grid-card {
+            background-color: rgba(255, 255, 255, 0.85);
+            /* backdrop-filter: blur(10px); */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+            will-change: transform;
+        }
+
+        .grid-card:active {
+            transform: scale(0.95);
+        }
+
+        .grid-card .card-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+        }
+
+        .grid-card .ticket-number {
+            bottom: 10px;
+            font-size: 0.7em;
+            padding: 2px 8px;
+        }
+
+        /* 确认按钮 (仅Swiper模式显示) */
+        .action-container {
+            height: 80px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .action-btn {
+            padding: 15px 40px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border: none;
+            border-radius: 30px;
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 165, 0, 0.4);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 320px;
+            transform: scale(0.8);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .modal-content h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .modal-content p {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .btn-confirm {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn-cancel {
+            background: #f44336;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+        }
+        
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
         }
     </style>
 </head>
 <body>
-    <div class="glass-container">
-        <h2>请选择一张票</h2>
-        <div style="margin-bottom: 1rem; padding: 1rem; background: rgba(255, 255, 255, 0.2); border-radius: 10px;">
-            <h3 style="margin: 0; color: #333;">奖池剩余金额: ￥{{ remaining_prize_pool }}</h3>
+
+    <div class="navbar">
+        <div class="user-info">
+            <i class="fas fa-user-circle"></i>
+            <span>{{ session.get('username', 'Guest') }}</span>
         </div>
-        <div class="card-grid">
-            {% for ticket in tickets %}
-                <a href="{{ url_for('scratch_card', ticket_id=ticket[0]) }}" class="card">
-                    {{ ticket[1] }}
-                </a>
-            {% endfor %}
-        </div>
-        <div class="pagination">
-            {% if page > 1 %}
-                <a href="{{ url_for('dashboard', page=page-1) }}">上一页</a>
-            {% endif %}
-            <span>第 {{ page }} 页</span>
-            {% if tickets|length == 9 %}
-                <a href="{{ url_for('dashboard', page=page+1) }}">下一页</a>
-            {% endif %}
+        <div class="controls">
+            <button class="icon-btn" onclick="toggleView()" title="切换视图">
+                <i class="fas fa-th-large" id="viewIcon"></i>
+            </button>
+            <a href="{{ url_for('logout') }}" class="icon-btn" title="退出登录">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
         </div>
     </div>
+
+    <div class="header-info">
+        <h2>选择您的幸运卡片</h2>
+        <div class="prize-pool">奖池剩余: ￥{{ remaining_prize_pool }}</div>
+        
+        <!-- 搜索框 -->
+        <div class="search-box">
+            <input type="text" id="ticketSearch" placeholder="输入票号搜索 (如 T001)" onkeydown="handleSearchKey(event)">
+            <button onclick="searchTicket()" type="button"><i class="fas fa-search"></i></button>
+        </div>
+        <div id="searchError" class="search-error"></div>
+    </div>
+
+    <div class="view-container">
+        <!-- Swiper View -->
+        <div class="swiper mySwiper" id="swiperView">
+            <div class="swiper-wrapper" id="swiperWrapper">
+                <!-- Swiper slides will be loaded dynamically -->
+            </div>
+        </div>
+
+        <!-- Grid View -->
+        <div class="grid-view" id="gridView">
+            <!-- Grid items will be loaded dynamically -->
+        </div>
+        <div id="loading" style="text-align: center; color: white; display: none;">加载中...</div>
+    </div>
+
+    <div class="action-container" id="actionContainer">
+        <button class="action-btn" onclick="confirmSelection()">确认选择</button>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-content">
+            <h3>确认选择</h3>
+            <p>您确定要刮这张卡片吗？<br><span id="modalTicketNum" style="font-weight:bold; color:#000;"></span></p>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal()">取消</button>
+                <button class="btn-confirm" onclick="proceedToScratch()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Swiper JS -->
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+
+    <script>
+        let selectedTicketId = null;
+        let selectedTicketNum = null;
+        let currentView = 'swiper'; // swiper | grid
+        
+        // 分页加载配置
+        const ticketsData = [
+            {% for ticket in tickets %}
+            { id: '{{ ticket[0] }}', num: '{{ ticket[1] }}' },
+            {% endfor %}
+        ];
+        
+        let loadedCount = 0;
+        const BATCH_SIZE = 10; // 减少单次加载数量以提升响应速度
+        let isLoading = false;
+        let swiper = null;
+
+        function initSwiper() {
+            if (swiper) return;
+            swiper = new Swiper(".mySwiper", {
+                effect: "cards",
+                grabCursor: true,
+                cardsEffect: {
+                    perSlideOffset: 8,
+                    perSlideRotate: 2,
+                    rotate: true,
+                    slideShadows: false, // 保持禁用阴影以优化性能
+                },
+                centeredSlides: true,
+                slidesPerView: "auto",
+                initialSlide: 0,
+                // ⚠️ 彻底移除 Virtual Mode，回退到手动分批加载，确保兼容性和可见性
+                // virtual: { ... },
+                on: {
+                    reachEnd: function () {
+                        if (!isLoading && loadedCount < ticketsData.length) {
+                            loadMoreSwiperSlides();
+                        }
+                    }
+                }
+            });
+            
+            // 首次加载数据到 Swiper
+            loadMoreSwiperSlides();
+        }
+
+        function createSwiperSlide(ticket) {
+            // 返回 HTML 字符串，用于 appendSlide
+            return `
+                <div class="swiper-slide" onclick="selectCard('${ticket.id}', '${ticket.num}')">
+                    <div class="card-pattern">
+                        <span class="ticket-number">${ticket.num}</span>
+                    </div>
+                </div>`;
+        }
+
+        function loadMoreSwiperSlides() {
+             if (isLoading || loadedCount >= ticketsData.length) return;
+             // Swiper 模式下也使用分批加载，避免一次性渲染太多导致闪退
+             // 这种方式比 virtual 模式更稳定
+             isLoading = true;
+             document.getElementById('loading').style.display = 'block';
+
+             setTimeout(() => {
+                 const nextBatch = ticketsData.slice(loadedCount, loadedCount + BATCH_SIZE);
+                 if (swiper) {
+                     const newSlides = nextBatch.map(createSwiperSlide);
+                     swiper.appendSlide(newSlides);
+                     swiper.update();
+                 }
+                 
+                 // 注意：这里需要单独维护 Swiper 的 loadedCount，或者让两者共享
+                 // 为了简单，我们让 loadedCount 全局共享，这意味着切换视图时可能会有数据同步问题
+                 // 但在当前逻辑下，我们假设用户主要在一个视图操作
+                 loadedCount += nextBatch.length;
+                 isLoading = false;
+                 document.getElementById('loading').style.display = 'none';
+             }, 50);
+        }
+        
+        function handleSearchKey(event) {
+            if (event.key === 'Enter' || event.keyCode === 13) {
+                event.preventDefault(); // 阻止默认回车行为
+                searchTicket();
+            }
+        }
+
+        function searchTicket() {
+             const input = document.getElementById('ticketSearch');
+             const errorEl = document.getElementById('searchError');
+             let num = input.value.trim();
+             
+             // 清除之前的错误
+             errorEl.innerText = '';
+             
+             if (!num) return;
+             
+             // 失去焦点，关闭移动端键盘
+             input.blur();
+             
+             // 简单处理大小写，假设票号是 T 开头
+             num = num.toUpperCase();
+             
+             const ticket = ticketsData.find(t => t.num === num);
+             if (ticket) {
+                 // 如果在 Swiper 模式下
+                 if (currentView === 'swiper' && swiper) {
+                     const index = ticketsData.findIndex(t => t.num === num);
+                     if (index !== -1) {
+                         // 检查该 slide 是否已加载
+                         if (index >= swiper.slides.length) {
+                              // 如果未加载，尝试加载剩余所有
+                              const remaining = ticketsData.slice(loadedCount);
+                              const newSlides = remaining.map(createSwiperSlide);
+                              swiper.appendSlide(newSlides);
+                              loadedCount = ticketsData.length;
+                              swiper.update();
+                         }
+                         swiper.slideTo(index);
+                     }
+                 }
+                 // 直接弹出确认框
+                 selectCard(ticket.id, ticket.num);
+             } else {
+                 // 使用非阻塞提示代替 alert
+                 errorEl.innerText = '未找到该票号，请检查输入是否正确';
+                 
+                 // 3秒后自动清除
+                 setTimeout(() => {
+                     if (errorEl.innerText.includes('未找到')) {
+                         errorEl.innerText = '';
+                     }
+                 }, 3000);
+             }
+         }
+
+        function createGridItem(ticket) {
+            const div = document.createElement('div');
+            div.className = 'grid-card';
+            div.onclick = () => selectCard(ticket.id, ticket.num);
+            div.innerHTML = `
+                <div class="card-pattern"></div>
+                <span class="ticket-number">${ticket.num}</span>
+            `;
+            return div;
+        }
+
+        function loadMoreGridItems() {
+            if (isLoading || loadedCount >= ticketsData.length) return;
+            isLoading = true;
+            document.getElementById('loading').style.display = 'block';
+
+            setTimeout(() => {
+                const nextBatch = ticketsData.slice(loadedCount, loadedCount + BATCH_SIZE);
+                const gridView = document.getElementById('gridView');
+                const fragment = document.createDocumentFragment();
+                nextBatch.forEach(ticket => {
+                    fragment.appendChild(createGridItem(ticket));
+                });
+                gridView.appendChild(fragment);
+
+                loadedCount += nextBatch.length;
+                isLoading = false;
+                document.getElementById('loading').style.display = 'none';
+            }, 50);
+        }
+
+        // 初始化加载
+        // Swiper 使用全量 Virtual，Grid 使用分批 Lazy Load
+        initSwiper();
+        // 预加载第一批 Grid 数据，以便切换时有内容
+        loadMoreGridItems();
+
+        // 监听 Grid 滚动加载
+        document.getElementById('gridView').addEventListener('scroll', function(e) {
+            if (currentView === 'grid') {
+                const { scrollTop, scrollHeight, clientHeight } = e.target;
+                if (scrollTop + clientHeight >= scrollHeight - 50) {
+                    loadMoreGridItems();
+                }
+            }
+        });
+
+        function toggleView() {
+            const swiperView = document.getElementById('swiperView');
+            const gridView = document.getElementById('gridView');
+            const actionContainer = document.getElementById('actionContainer');
+            const viewIcon = document.getElementById('viewIcon');
+            
+            if (currentView === 'swiper') {
+                // Switch to Grid
+                swiperView.style.display = 'none';
+                gridView.style.display = 'grid';
+                actionContainer.style.visibility = 'hidden';
+                viewIcon.className = 'fas fa-clone';
+                currentView = 'grid';
+                
+                // 确保 Grid 至少加载了一些数据
+                if (loadedCount === 0) loadMoreGridItems();
+                
+            } else {
+                // Switch to Swiper
+                gridView.style.display = 'none';
+                swiperView.style.display = 'block';
+                actionContainer.style.visibility = 'visible';
+                viewIcon.className = 'fas fa-th-large';
+                currentView = 'swiper';
+                
+                if (swiper) {
+                    swiper.update();
+                    // 如果因为 resize 等原因需要刷新
+                    swiper.virtual.update(true);
+                } else {
+                    initSwiper();
+                }
+            }
+        }
+
+        function confirmSelection() {
+            // Swiper mode confirmation (active slide)
+            if (currentView === 'swiper') {
+                const activeIndex = swiper.activeIndex;
+                if (ticketsData.length > 0 && ticketsData[activeIndex]) {
+                    const ticket = ticketsData[activeIndex];
+                    selectedTicketId = ticket.id;
+                    selectedTicketNum = ticket.num;
+                    showModal();
+                } else {
+                    alert("没有可用的卡片");
+                }
+            }
+        }
+
+        // 点击卡片触发确认
+        function selectCard(id, num) {
+            if (currentView === 'swiper') {
+                const activeIndex = swiper.activeIndex;
+                if (ticketsData[activeIndex] && ticketsData[activeIndex].id == id) {
+                    selectedTicketId = id;
+                    selectedTicketNum = num;
+                    showModal();
+                } else {
+                    const index = ticketsData.findIndex(t => t.id == id);
+                    if (index !== -1) swiper.slideTo(index);
+                }
+            } else {
+                // Grid mode: direct selection
+                selectedTicketId = id;
+                selectedTicketNum = num;
+                showModal();
+            }
+        }
+
+        function showModal() {
+            document.getElementById('modalTicketNum').innerText = selectedTicketNum;
+            const modal = document.getElementById('confirmModal');
+            modal.style.display = 'flex';
+            modal.offsetHeight; // trigger reflow
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('confirmModal');
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        }
+
+        function proceedToScratch() {
+            if (selectedTicketId) {
+                window.location.href = '/scratch_card/' + selectedTicketId;
+            }
+        }
+    </script>
 </body>
 </html>

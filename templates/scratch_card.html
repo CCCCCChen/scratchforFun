@@ -1,252 +1,399 @@
-<style>
-    .scratch-card {
-        /* 设置一个固定的宽高比容器，同时尽量填满页面 */
-        aspect-ratio: 754 / 1505;
-        width: min(95vw, calc(95vh * 754 / 1505)); /* 取视口宽度95%和基于视口高度计算的宽度中的较小值 */
-        margin: 10px auto 0;
-        position: relative;
-        overflow: hidden;
-    }
-
-    /* 添加顶部和底部背景图的容器 */
-    .scratch-card .top-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: calc(100% * 831 / 1505);
-        background-image: url("{{ url_for('static', filename='images/top.png') }}");
-        background-repeat: no-repeat;
-        background-size: 100% 100%;
-    }
-
-    .scratch-card .bottom-bg {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: calc(100% * 188 / 1505); /* 底部图片占比 188/1505 */
-        background-image: url("{{ url_for('static', filename='images/bottom.png') }}");
-        background-repeat: no-repeat;
-        background-size: 100% 100%;
-    }
-
-    .scratch-card::before {
-        content: "{{ ticket_number }}";
-        position: absolute;
-        bottom: 10px;
-        right: 10px;
-        font-size: 2rem;
-        color: white;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-    }
-
-    .scratch-card .grid-container {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        grid-template-rows: repeat(5, 1fr);
-        position: absolute;
-        width: 100%;
-        height: calc(100% - (100% * 831 / 1505) - (100% * 188 / 1505));
-        top: calc(100% * 831 / 1505);
-        left: 0;
-        transform: none;
-        background-color: #E8E8E8; /* 添加银灰色背景 */
-    }
-
-    .scratch-card .grid-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .scratch-card .grid-item .number {
-        font-size: calc(100vw * 0.04);
-        font-weight: 900; /* 增加字重到最粗 */
-        color: #000000;
-        text-shadow: none;
-        -webkit-text-stroke: unset; /* 移除镂空效果 */
-    }
-
-    @media (min-aspect-ratio: 754/1505) {
-        .scratch-card .grid-item .number {
-            font-size: calc(95vh * 754/1505 * 0.04);
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>刮刮乐</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #2b32b2, #1488cc);
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
         }
-    }
-    .scratch-card .grid-item .amount {
-        font-size: calc(100vw * 0.02); /* 保持与数字的比例关系 */
-        color: #000000; /* 改为黑色 */
-        text-shadow: none; /* 移除文字阴影 */
-    }
 
-    @media (min-aspect-ratio: 754/1505) {
-        .scratch-card .grid-item .number {
-            font-size: calc(95vh * 754/1505 * 0.04);
+        .glass-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
-        .scratch-card .grid-item .amount {
-            font-size: calc(95vh * 754/1505 * 0.02);
+
+        .scratch-card {
+            /* 适配移动端的尺寸计算 */
+            aspect-ratio: 754 / 1505;
+            width: min(90vw, calc(85vh * 754 / 1505)); 
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 10px;
+            background: #fff;
         }
-    }
 
-    .scratch-card {
-        position: relative;
-        cursor: pointer;
-    }
+        /* 顶部背景 */
+        .scratch-card .top-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% * 831 / 1505);
+            background-image: url("{{ url_for('static', filename='images/top.png') }}");
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            z-index: 2; /* 确保在刮层上面，如果有需要的话。但这里其实不需要，因为刮的是下面 */
+            pointer-events: none; /* 让点击穿透 */
+        }
 
-    #scratchCanvas {
-        position: absolute;
-        top: calc(100% * 831 / 1505);  /* 与grid-container对齐 */
-        left: 0;
-        width: 100%;
-        height: calc(100% - (100% * 831 / 1505) - (100% * 188 / 1505));  /* 与grid-container高度一致 */
-        z-index: 1;
-    }
-</style>
+        /* 底部背景 */
+        .scratch-card .bottom-bg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% * 188 / 1505);
+            background-image: url("{{ url_for('static', filename='images/bottom.png') }}");
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* 票号显示 */
+        .ticket-number {
+            position: absolute;
+            bottom: 5%;
+            right: 5%;
+            font-size: 1.2rem;
+            color: white;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+            z-index: 3;
+            font-family: monospace;
+        }
+
+        /* 格子容器 */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+            position: absolute;
+            width: 100%;
+            /* 高度 = 总高度 - 顶部图片高度 - 底部图片高度 */
+            height: calc(100% - (100% * 831 / 1505) - (100% * 188 / 1505));
+            top: calc(100% * 831 / 1505);
+            left: 0;
+            background-color: #E8E8E8;
+            visibility: hidden; /* 默认隐藏，防止透视，等Canvas加载完再显示 */
+        }
+
+        .grid-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(0,0,0,0.05);
+            position: relative;
+        }
+
+        .grid-item .number {
+            font-size: calc(90vw / 5 * 0.4);
+            font-weight: 900;
+            color: #333;
+            line-height: 1;
+        }
+        
+        .grid-item .amount {
+            font-size: calc(90vw / 5 * 0.2);
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* 适配大屏幕 */
+        @media (min-width: 500px) {
+            .grid-item .number {
+                font-size: 1.5rem;
+            }
+            .grid-item .amount {
+                font-size: 0.8rem;
+            }
+        }
+
+        /* 特殊数字样式 */
+        .lucky-number-7 {
+            color: #FFD700 !important;
+            text-shadow: 0 0 5px #000;
+        }
+        .lucky-number-77 {
+            color: #FF4500 !important;
+            text-shadow: 0 0 5px #000;
+        }
+        .lucky-number-777 {
+            background: linear-gradient(45deg, #FFD700, #FF0000);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 10px rgba(255,215,0,0.5);
+        }
+
+        /* Canvas */
+        #scratchCanvas {
+            position: absolute;
+            top: calc(100% * 831 / 1505);
+            left: 0;
+            width: 100%;
+            height: calc(100% - (100% * 831 / 1505) - (100% * 188 / 1505));
+            z-index: 1;
+            touch-action: none; /* 禁止默认触摸行为 */
+        }
+
+        /* Modal Result */
+        .result-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            animation: fadeIn 0.5s;
+        }
+
+        .result-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            width: 80%;
+            max-width: 400px;
+            position: relative;
+            overflow: hidden;
+            animation: popUp 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        
+        /* 庆祝礼花 */
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            animation: confetti-fall 3s linear infinite;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popUp { from { transform: scale(0.5); } to { transform: scale(1); } }
+        @keyframes confetti-fall { 0% { transform: translateY(-100px) rotate(0deg); } 100% { transform: translateY(500px) rotate(720deg); } }
+
+        .result-amount {
+            font-size: 3rem;
+            color: #e74c3c;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .btn-home {
+            background: linear-gradient(to right, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            padding: 12px 30px;
+            color: white;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .btn-home:active { transform: scale(0.95); }
+
+    </style>
+</head>
 <body>
     <div class="glass-container">
-        <h2>刮刮卡</h2>
-        <div class="background-container">
-            <div class="scratch-card">
-                <div class="top-bg"></div>
-                <div class="bottom-bg"></div>
-                <div class="grid-container">
-                    {% for item in scratch_data %}
-                    <div class="grid-item" data-winning="{{ item.is_winning|lower }}" data-multiplier="{{ item.multiplier }}">
-                        <div class="number {% if item.number == 7 %}lucky-number-7{% elif item.number == 77 %}lucky-number-77{% elif item.number == 777 %}lucky-number-777{% endif %}">{{ item.number }}</div>
-                        <div class="amount">￥{{ item.amount }}</div>
+        <div class="scratch-card">
+            <div class="top-bg"></div>
+            <div class="bottom-bg"></div>
+            <div class="ticket-number">{{ ticket_number }}</div>
+            
+            <div class="grid-container">
+                {% for item in scratch_data %}
+                <div class="grid-item" data-winning="{{ item.is_winning|lower }}" data-multiplier="{{ item.multiplier }}">
+                    <div class="number {% if item.number == 7 %}lucky-number-7{% elif item.number == 77 %}lucky-number-77{% elif item.number == 777 %}lucky-number-777{% endif %}">
+                        {{ item.number }}
                     </div>
-                    {% endfor %}
+                    <div class="amount">￥{{ item.amount }}</div>
                 </div>
-                <canvas id="scratchCanvas"></canvas>
+                {% endfor %}
             </div>
+            
+            <canvas id="scratchCanvas"></canvas>
         </div>
-        <div id="result" style="display: none;">
-            <h3>中奖金额: {{ amount }} 元</h3>
-        </div>
-        <script>
-            window.onload = function() {
-                const canvas = document.getElementById('scratchCanvas');
-                const ctx = canvas.getContext('2d');
-                let isDrawing = false;
-                let scratchedPixels = 0;
-                let totalPixels = 0;
-
-                // 设置canvas尺寸
-                function setCanvasSize() {
-                    canvas.width = canvas.offsetWidth;
-                    canvas.height = canvas.offsetHeight;
-                    // 初始化涂层
-                    ctx.fillStyle = '#CCCCCC';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    totalPixels = canvas.width * canvas.height;
-                }
-
-                // 初始化canvas尺寸
-                setCanvasSize();
-                window.addEventListener('resize', setCanvasSize);
-
-                // 处理触摸事件
-                function handleStart(e) {
-                    isDrawing = true;
-                    draw(e);
-                }
-
-                function handleEnd() {
-                    isDrawing = false;
-                }
-
-                function draw(e) {
-                    if (!isDrawing) return;
-                    
-                    e.preventDefault();
-                    const rect = canvas.getBoundingClientRect();
-                    const x = (e.clientX || e.touches[0].clientX) - rect.left;
-                    const y = (e.clientY || e.touches[0].clientY) - rect.top;
-
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.beginPath();
-                    ctx.arc(x, y, 20, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // 计算已刮开的面积
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    scratchedPixels = 0;
-                    for (let i = 3; i < imageData.data.length; i += 4) {
-                        if (imageData.data[i] === 0) scratchedPixels++;
-                    }
-
-                    // 如果刮开面积超过50%，移除涂层
-                    if (scratchedPixels / totalPixels > 0.8) {
-                        canvas.style.display = 'none';
-                        
-                        // 计算实际中奖金额
-                        let totalWinning = 0;
-                        const gridItems = document.querySelectorAll('.grid-item');
-                        gridItems.forEach(item => {
-                            if (item.dataset.winning === 'true') {
-                                const amount = parseInt(item.querySelector('.amount').textContent.replace('￥', ''));
-                                const multiplier = parseInt(item.dataset.multiplier);
-                                totalWinning += amount * multiplier;
-                            }
-                        });
-                        
-                        // 显示刮奖结果弹窗
-                        let message = '';
-                        if (totalWinning > 0) {
-                            message = '恭喜您中奖了！\n奖金：￥' + totalWinning;
-                        } else {
-                            message = '谢谢惠顾！\n本次未中奖，请再接再厉！';
-                        }
-                        
-                        // 弹出提示
-                        alert(message);
-                        
-                        // 弹窗关闭后自动返回dashboard
-                        var dashboardUrl = '{{ url_for("dashboard") }}';
-                        window.location.href = dashboardUrl;
-                        
-                        // 调用后端接口标记票为已使用
-                        fetch('/complete_scratch/{{ ticket_id }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (!data.success) {
-                                console.error('标记票据失败:', data.message);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('请求失败:', error);
-                        });
-                    }
-                }
-
-                // 添加事件监听
-                canvas.addEventListener('mousedown', handleStart);
-                canvas.addEventListener('mousemove', draw);
-                canvas.addEventListener('mouseup', handleEnd);
-                canvas.addEventListener('touchstart', handleStart);
-                canvas.addEventListener('touchmove', draw);
-                canvas.addEventListener('touchend', handleEnd);
-            };
-
-            function reveal() {
-                const canvas = document.getElementById('scratchCanvas');
-                canvas.style.display = 'none';
-                const scratchCard = document.querySelector('.scratch-card');
-                const result = document.getElementById('result');
-                scratchCard.style.opacity = '0';
-                setTimeout(() => {
-                    scratchCard.style.display = 'none';
-                    result.style.display = 'block';
-                    result.style.opacity = '1';
-                }, 300);
-            }
-        </script>
     </div>
+
+    <!-- Result Modal -->
+    <div class="result-modal" id="resultModal">
+        <div class="result-content">
+            <h2 id="resultTitle">恭喜！</h2>
+            <div class="result-amount" id="resultAmount">￥0</div>
+            <p id="resultDesc">您赢得了一笔奖金！</p>
+            <button class="btn-home" onclick="goHome()">返回首页</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        window.onload = function() {
+            const canvas = document.getElementById('scratchCanvas');
+            const ctx = canvas.getContext('2d');
+            let isDrawing = false;
+            let scratchedPixels = 0;
+            let totalPixels = 0;
+            let isCompleted = false;
+
+            function setCanvasSize() {
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+                ctx.fillStyle = '#CCCCCC'; // 涂层颜色
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // 添加一些纹理或文字在涂层上
+                ctx.font = '20px Arial';
+                ctx.fillStyle = '#999999';
+                ctx.textAlign = 'center';
+                ctx.fillText('刮开涂层', canvas.width/2, canvas.height/2);
+                
+                totalPixels = canvas.width * canvas.height;
+                
+                // Canvas 绘制完成后显示底层数字
+                document.querySelector('.grid-container').style.visibility = 'visible';
+            }
+
+            setCanvasSize();
+            // 注意：resize会导致涂层重置，实际生产中应保存状态。这里简单起见，暂不处理resize时的状态保留
+            
+            function getEventPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                let clientX = e.clientX;
+                let clientY = e.clientY;
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                }
+                return {
+                    x: clientX - rect.left,
+                    y: clientY - rect.top
+                };
+            }
+
+            function scratch(e) {
+                if (!isDrawing || isCompleted) return;
+                e.preventDefault();
+                const pos = getEventPos(e);
+                
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+
+                checkProgress();
+            }
+
+            // 节流检查进度，避免卡顿
+            let checkTimeout;
+            function checkProgress() {
+                if (checkTimeout) return;
+                checkTimeout = setTimeout(() => {
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    let pixels = 0;
+                    // 抽样检查，提高性能
+                    for (let i = 3; i < imageData.data.length; i += 40) { // 每10个像素查一个
+                        if (imageData.data[i] === 0) pixels++;
+                    }
+                    // 总像素也要相应缩放
+                    const sampledTotal = imageData.data.length / 40;
+                    
+                    if (pixels / sampledTotal > 0.6) { // 60% 阈值
+                        finishScratch();
+                    }
+                    checkTimeout = null;
+                }, 100);
+            }
+
+            function finishScratch() {
+                if (isCompleted) return;
+                isCompleted = true;
+                
+                // 淡出 Canvas
+                canvas.style.transition = 'opacity 0.5s';
+                canvas.style.opacity = '0';
+                setTimeout(() => canvas.style.display = 'none', 500);
+
+                // 计算奖金
+                let totalWinning = 0;
+                const gridItems = document.querySelectorAll('.grid-item');
+                gridItems.forEach(item => {
+                    if (item.dataset.winning === 'true') {
+                        const amount = parseInt(item.querySelector('.amount').textContent.replace('￥', ''));
+                        const multiplier = parseInt(item.dataset.multiplier);
+                        totalWinning += amount * multiplier;
+                    }
+                });
+
+                // 提交结果
+                fetch('/complete_scratch/{{ ticket_id }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                }).then(() => {
+                    // 显示结果 Modal
+                    setTimeout(() => showResult(totalWinning), 600);
+                });
+            }
+
+            function showResult(amount) {
+                const modal = document.getElementById('resultModal');
+                const title = document.getElementById('resultTitle');
+                const amountEl = document.getElementById('resultAmount');
+                const desc = document.getElementById('resultDesc');
+
+                amountEl.innerText = '￥' + amount;
+                
+                if (amount > 0) {
+                    title.innerText = '🎉 恭喜中奖！';
+                    title.style.color = '#e74c3c';
+                    desc.innerText = '手气真棒！';
+                    // 撒花
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                } else {
+                    title.innerText = '谢谢惠顾';
+                    title.style.color = '#7f8c8d';
+                    desc.innerText = '差一点点就中奖了，再接再厉！';
+                }
+                
+                modal.style.display = 'flex';
+            }
+
+            canvas.addEventListener('mousedown', (e) => { isDrawing = true; scratch(e); });
+            canvas.addEventListener('mousemove', scratch);
+            canvas.addEventListener('mouseup', () => isDrawing = false);
+            canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+            canvas.addEventListener('touchstart', (e) => { isDrawing = true; scratch(e); });
+            canvas.addEventListener('touchmove', scratch);
+            canvas.addEventListener('touchend', () => isDrawing = false);
+        };
+
+        function goHome() {
+            window.location.href = "{{ url_for('dashboard') }}";
+        }
+    </script>
 </body>
-</```
+</html>

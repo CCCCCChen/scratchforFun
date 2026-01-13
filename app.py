@@ -297,7 +297,7 @@ initialize_app()
 def index():
     if 'username' not in session:
         return redirect(url_for('login'))
-    return render_template('index.html', username=session['username'], scratch_count=scratch_count)
+    return redirect(url_for('dashboard'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -360,14 +360,15 @@ def dashboard():
         tickets = []
         remaining_prize_pool = 0
     
-    # 分页逻辑
-    page = int(request.args.get('page', 1))
-    per_page = 9  # 每页显示9张票
-    start = (page - 1) * per_page
-    end = start + per_page
-    tickets_on_page = tickets[start:end]
+    # 分页逻辑 - 移除分页，显示所有未使用的票据，适应移动端滑动选择
+    # page = int(request.args.get('page', 1))
+    # per_page = 9
+    # start = (page - 1) * per_page
+    # end = start + per_page
+    # tickets_on_page = tickets[start:end]
+    tickets_on_page = tickets
     
-    return render_template('dashboard.html', tickets=tickets_on_page, page=page, remaining_prize_pool=remaining_prize_pool)
+    return render_template('dashboard.html', tickets=tickets_on_page, remaining_prize_pool=remaining_prize_pool)
 
 @app.route('/scratch_card/<int:ticket_id>')
 def scratch_card(ticket_id):
@@ -466,61 +467,118 @@ def generate_scratch_card_data(total_amount):
     import random
     
     # 可选的金额列表
-    amount_options = [10, 20, 30, 50, 100,200,500, 1000, 2000, 5000]
-    
-    # 随机决定中奖位置数量 (0-25)
-    winning_positions = random.randint(0, min(25, total_amount // min(amount_options)))
-    print(total_amount, "-total_amount :",winning_positions)
+    amount_options = [10, 20, 30, 50, 100, 200, 500, 1000, 2000, 5000]
     
     # 初始化25个格子
     grid_data = []
-    options = [i for i in range(1, 999) if i not in {7, 77, 777}]
+    # 干扰数字选项：1-100，排除 7, 77, 777 (虽然777不在1-100范围内，但为了保险起见)
+    options = [i for i in range(1, 101) if i not in {7, 77}]
+    
     for i in range(25):
         grid_data.append({
-            # 'number': random.randint(1, 99),
             'number': random.choice(options),
             'amount': random.choice(amount_options),
             'is_winning': False,
             'multiplier': 1
         })
     
-    if winning_positions > 0 and total_amount > 0:
-        # 使用动态规划函数寻找精确的货币组合
-        while True:
-            # 选择中奖位置
-            winning_indices = random.sample(range(25), winning_positions)
-            print("winning index: ",winning_indices)
-            
-            # 使用find_combination_with_n_numbers函数
-            success, result = find_combination_with_n_numbers(amount_options, total_amount, winning_positions)
-            
-            if not success:
-                # 如果无法找到组合，重新随机winning_positions
-                winning_positions = random.randint(0, min(25, total_amount // min(amount_options)))
-                print(f"重新生成中奖位置数量: {winning_positions}")
-                continue
-            else:
-                # 根据result分配奖金
-                print(f"找到精确组合: {result}")
-                
-                # 创建金额分配列表
-                amounts_to_assign = result
-                
-                # 随机打乱分配顺序
-                random.shuffle(amounts_to_assign)
-                
-                # 分配给中奖位置
-                for i, idx in enumerate(winning_indices):
-                    if i < len(amounts_to_assign):
-                        amount = amounts_to_assign[i]
-                        grid_data[idx]['amount'] = amount
-                        grid_data[idx]['is_winning'] = True
-                        
-                        # 根据位置索引确定倍数和数字
-                        grid_data[idx]['multiplier'] = 1
-                        grid_data[idx]['number'] = 7
-                
+    if total_amount > 0:
+        # 尝试寻找组合
+        # 限制最大中奖位置数为 9，避免太分散，且不超过格子总数 25
+        max_positions = min(9, total_amount // min(amount_options))
+        # 确保 max_positions 为 int 类型
+        max_positions = int(max_positions)
+        if max_positions < 1: max_positions = 1
+        
+        # 尝试多次寻找合适的组合
+        found = False
+        result = []
+        winning_positions = 0
+        
+        # 从少到多尝试，或者随机尝试
+        # 为了美观，通常 1-5 个中奖位置比较合适
+        possible_counts = list(range(1, max_positions + 1))
+        random.shuffle(possible_counts)
+        
+        for count in possible_counts:
+            success, res = find_combination_with_n_numbers(amount_options, total_amount, count)
+            if success:
+                result = res
+                winning_positions = count
+                found = True
                 break
+        
+        if not found:
+            # 兜底策略：如果没有找到精确组合，直接把总金额放到一个格子里（如果总金额在选项里）
+            if total_amount in amount_options:
+                result = [total_amount]
+                winning_positions = 1
+                found = True
+            else:
+                # 这种情况理论上很少见，除非 total_amount 不是 amount_options 的组合
+                # 如果发生了，就拆分成最小单位或者报错
+                # 这里简单处理：尽可能凑
+                print(f"Warning: Could not find combination for {total_amount}")
+                # 这种情况下，我们强制修改一个格子的金额为 total_amount (前端可能显示不美观，但保证金额对)
+                result = [total_amount]
+                winning_positions = 1
+                found = True
+
+        if found:
+            print(f"找到组合: {result}, 位置数: {winning_positions}")
+            
+            # 选择中奖格子的索引
+            winning_indices = random.sample(range(25), winning_positions)
+            
+            # 分配金额和倍数逻辑
+            for i, idx in enumerate(winning_indices):
+                actual_val = result[i]
+                
+                # 决定倍数策略
+                # 优先尝试 x3 (777), 然后 x2 (77), 最后 x1 (7)
+                # 必须满足：actual_val % multiplier == 0 且 actual_val / multiplier 在 amount_options 中
+                # 或者 actual_val / multiplier 是一个合理的显示金额
+                
+                mode = 'x1'
+                display_amount = actual_val
+                
+                candidates = []
+                # Check x3
+                if actual_val % 3 == 0:
+                    base = actual_val // 3
+                    if base in amount_options:
+                        candidates.append(('x3', base))
+                
+                # Check x2
+                if actual_val % 2 == 0:
+                    base = actual_val // 2
+                    if base in amount_options:
+                        candidates.append(('x2', base))
+                
+                # Check x1
+                if actual_val in amount_options:
+                    candidates.append(('x1', actual_val))
+                else:
+                    # 如果 actual_val 不在选项里（可能是因为兜底策略），强制 x1
+                    candidates.append(('x1', actual_val))
+                
+                # 随机选择一种展示方式
+                if candidates:
+                    chosen = random.choice(candidates)
+                    mode, display_amount = chosen
+                
+                grid_data[idx]['amount'] = display_amount
+                grid_data[idx]['is_winning'] = True
+                
+                if mode == 'x3':
+                    grid_data[idx]['multiplier'] = 3
+                    grid_data[idx]['number'] = 777
+                elif mode == 'x2':
+                    grid_data[idx]['multiplier'] = 2
+                    grid_data[idx]['number'] = 77
+                else:
+                    grid_data[idx]['multiplier'] = 1
+                    grid_data[idx]['number'] = 7 # 普通中奖数字
     
     return grid_data
 
@@ -723,6 +781,11 @@ def scratch():
     if 'username' not in session:
         return '请先登录', 403
     username = session['username']
+    
+    # Ensure user exists in counter
+    if username not in user_scratch_count:
+        user_scratch_count[username] = 0
+        
     if user_scratch_count[username] >= scratch_count:
         return '刮刮乐数量不足', 400
     user_scratch_count[username] += 1
@@ -734,4 +797,4 @@ def remaining_count():
 
 if __name__ == '__main__':
     # app.run(debug=True)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5001, debug=False)
