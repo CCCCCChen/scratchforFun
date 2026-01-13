@@ -405,11 +405,9 @@
         let currentView = 'swiper'; // swiper | grid
         
         // 分页加载配置
-        const ticketsData = [
-            {% for ticket in tickets %}
-            { id: '{{ ticket[0] }}', num: '{{ ticket[1] }}' },
-            {% endfor %}
-        ];
+        // 使用 tojson 传递数据，更规范且避免 IDE 误报语法错误
+        const rawTickets = {{ tickets | tojson | safe }};
+        const ticketsData = rawTickets.map(t => ({ id: t[0], num: t[1] }));
         
         let loadedCount = 0;
         const BATCH_SIZE = 10; // 减少单次加载数量以提升响应速度
