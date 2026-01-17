@@ -1,12 +1,21 @@
 import json
 import os
 import random
+import secrets
 import sqlite3
 
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, make_response
+from flask import flash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+
+DB_FILE = os.environ.get('DATABASE_FILE', 'xx.sqlite')
+SETTINGS_FILE = os.environ.get('SETTINGS_FILE', 'setting.json')
+URL_PREFIX = os.environ.get('URL_PREFIX', '').rstrip('/')
+
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_urlsafe(32))
+app.config['SESSION_COOKIE_PATH'] = URL_PREFIX or '/'
 
 # 在 Flask 应用中注册 random 模块为全局变量
 app.jinja_env.globals.update(random=random)
@@ -20,18 +29,78 @@ prizes = {
 }
 scratch_count = 100
 
+class PrefixMiddleware:
+    def __init__(self, wsgi_app, prefix: str):
+        self.wsgi_app = wsgi_app
+        self.prefix = (prefix or '').rstrip('/')
+
+    def __call__(self, environ, start_response):
+        if self.prefix and environ.get('PATH_INFO', '').startswith(self.prefix + '/'):
+            environ['SCRIPT_NAME'] = self.prefix
+            environ['PATH_INFO'] = environ.get('PATH_INFO', '')[len(self.prefix):] or '/'
+        return self.wsgi_app(environ, start_response)
+
+if URL_PREFIX:
+    app.wsgi_app = PrefixMiddleware(app.wsgi_app, URL_PREFIX)
+
 # 从数据库获取用户信息的函数
 def get_user_from_db(username):
     try:
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute('SELECT username, password FROM users WHERE username = ?', (username,))
+        cursor.execute('SELECT username, password, COALESCE(is_admin, 0) FROM users WHERE username = ?', (username,))
         user = cursor.fetchone()
         conn.close()
         return user
     except sqlite3.Error as e:
         print(f"获取用户信息错误: {e}")
         return None
+
+def is_password_hash(value: str) -> bool:
+    if not value:
+        return False
+    return value.startswith('pbkdf2:') or value.startswith('scrypt:')
+
+def ensure_user_schema(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'is_admin' not in columns:
+        cursor.execute('ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0')
+        conn.commit()
+
+def ensure_ticket_schema(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(tickets)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'owner_username' not in columns:
+        cursor.execute('ALTER TABLE tickets ADD COLUMN owner_username TEXT')
+        conn.commit()
+
+def ensure_admin_user(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute('SELECT username FROM users WHERE username = ?', ('admin',))
+    exists = cursor.fetchone()
+    if exists:
+        cursor.execute('UPDATE users SET is_admin = 1 WHERE username = ?', ('admin',))
+        conn.commit()
+        return
+
+    init_password = os.environ.get('ADMIN_INIT_PASSWORD', 'admin123')
+    cursor.execute(
+        'INSERT INTO users (username, password, spent_amount, is_admin) VALUES (?, ?, 0, 1)',
+        ('admin', generate_password_hash(init_password)),
+    )
+    conn.commit()
+
+def migrate_plaintext_passwords(conn: sqlite3.Connection):
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, password FROM users')
+    rows = cursor.fetchall()
+    for user_id, password_value in rows:
+        if password_value and not is_password_hash(password_value):
+            cursor.execute('UPDATE users SET password = ? WHERE id = ?', (generate_password_hash(password_value), user_id))
+    conn.commit()
 
 # 用户刮刮乐数量记录 (已弃用，改用数据库统计)
 # user_scratch_count = {}
@@ -189,13 +258,13 @@ def optimize_prize_distribution(frequencies, prize_amounts, target_tickets, tota
 
 # 初始化判断逻辑
 def initialize_app():
-    db_file = 'xx.sqlite'
+    db_file = DB_FILE
     if not os.path.exists(db_file):
         print("初始化逻辑开始...")
         
         # 1. 获取 setting.json 的内容
         try:
-            with open('setting.json', 'r', encoding='utf-8') as f:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
                 total_tickets = settings.get('total_tickets', 100)
                 total_amount = settings.get('total_amount', 10000)
@@ -226,17 +295,54 @@ def initialize_app():
             ''')
             for i, freq in enumerate(prize_frequencies):
                 cursor.execute('INSERT INTO prizes (amount, frequency) VALUES (?, ?)', (prize_amounts[i], freq))
-            conn.commit()
-            
-            # 添加创建 users 表的逻辑
+
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE,
                     password TEXT,
-                    spent_amount REAL DEFAULT 0
+                    spent_amount REAL DEFAULT 0,
+                    is_admin INTEGER DEFAULT 0
                 )
             ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tickets (
+                    id INTEGER PRIMARY KEY,
+                    ticket_number TEXT,
+                    amount REAL,
+                    is_selected INTEGER DEFAULT 0,
+                    owner_username TEXT
+                )
+            ''')
+
+            winning_ticket_indices = random.sample(range(1, total_tickets + 1), target_winning_tickets)
+
+            prize_pool = []
+            for i, freq in enumerate(prize_frequencies):
+                prize_pool.extend([prize_amounts[i]] * freq)
+            random.shuffle(prize_pool)
+
+            prize_index = 0
+            for i in range(1, total_tickets + 1):
+                ticket_number = f"94-1219-00000010-{i:03d}"
+                amount = 0
+                if i in winning_ticket_indices and prize_index < len(prize_pool):
+                    amount = prize_pool[prize_index]
+                    prize_index += 1
+                cursor.execute('INSERT INTO tickets (ticket_number, amount, is_selected) VALUES (?, ?, 0)', (ticket_number, amount))
+
+            default_users = [
+                ('user1', os.environ.get('USER1_INIT_PASSWORD', 'password1')),
+                ('user2', os.environ.get('USER2_INIT_PASSWORD', 'password2')),
+            ]
+            for username, password in default_users:
+                try:
+                    cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, generate_password_hash(password)))
+                except sqlite3.IntegrityError:
+                    pass
+
+            ensure_admin_user(conn)
             conn.commit()
         except sqlite3.Error as e:
             print(f"数据库操作错误: {e}")
@@ -245,61 +351,16 @@ def initialize_app():
         finally:
             if 'conn' in locals():
                 conn.close()
-        
-            # 4. 随机生成中奖票数个不重复的整数列表
-            winning_ticket_indices = random.sample(range(1, total_tickets + 1), target_winning_tickets)
-            
-            # 5. 生成票编号并初始化金额和状态
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS tickets (
-                    id INTEGER PRIMARY KEY,
-                    ticket_number TEXT,
-                    amount REAL,
-                    is_selected INTEGER DEFAULT 0
-                )
-            ''')
-            
-            # 创建奖金池用于分配
-            prize_pool = []
-            for i, freq in enumerate(prize_frequencies):
-                prize_pool.extend([prize_amounts[i]] * freq)
-            random.shuffle(prize_pool)
-            
-            prize_index = 0
-            for i in range(1, total_tickets + 1):
-                ticket_number = f"94-1219-00000010-{i:03d}"
-                amount = 0
-                if i in winning_ticket_indices and prize_index < len(prize_pool):
-                    amount = prize_pool[prize_index]
-                    prize_index += 1
-                cursor.execute('INSERT INTO tickets (ticket_number, amount) VALUES (?, ?)', (ticket_number, amount))
-            
-            # 初始化默认用户到数据库
-            default_users = [
-                ('user1', 'password1'),
-                ('user2', 'password2')
-            ]
-            for username, password in default_users:
-                try:
-                    cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
-                except sqlite3.IntegrityError:
-                    # 用户已存在，跳过
-                    pass
-            conn.commit()
         print("初始化完成。")
     else:
         print("已存在初始化文件，跳过初始化逻辑。")
-    
-    # Schema Migration: Ensure owner_username exists
+
     try:
         conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(tickets)")
-        columns = [info[1] for info in cursor.fetchall()]
-        if 'owner_username' not in columns:
-            print("Migrating: Adding owner_username column to tickets table...")
-            cursor.execute('ALTER TABLE tickets ADD COLUMN owner_username TEXT')
-            conn.commit()
+        ensure_user_schema(conn)
+        ensure_ticket_schema(conn)
+        migrate_plaintext_passwords(conn)
+        ensure_admin_user(conn)
         conn.close()
     except sqlite3.Error as e:
         print(f"Schema migration error: {e}")
@@ -321,12 +382,12 @@ def login():
         
         # 从数据库验证用户
         user = get_user_from_db(username)
-        if user and user[1] == password:  # user[1] 是密码
+        if user and check_password_hash(user[1], password):
             session['username'] = username
             
             # 初始化用户信息（从数据库读取）
             try:
-                conn = sqlite3.connect('xx.sqlite')
+                conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
                 cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
                 user_info = cursor.fetchone()
@@ -350,21 +411,41 @@ def dashboard():
     if 'username' not in session:
         return redirect(url_for('login'))
     
-    # 查询未被选中的票和奖池剩余金额
+    q = (request.args.get('q') or '').strip().upper()
+    page = max(int(request.args.get('page', 1)), 1)
+    per_page = min(max(int(request.args.get('per_page', 60)), 12), 200)
+
     try:
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, ticket_number FROM tickets WHERE is_selected = 0 ORDER BY id')
-        tickets = cursor.fetchall()
+        cursor.execute('SELECT COUNT(*) FROM tickets WHERE is_selected = 0')
+        pool_remaining = cursor.fetchone()[0] or 0
+
+        tickets = []
+        search_error = None
+        if q:
+            cursor.execute('SELECT id, ticket_number FROM tickets WHERE is_selected = 0 AND UPPER(ticket_number) = ? LIMIT 1', (q,))
+            row = cursor.fetchone()
+            if row:
+                tickets = [row]
+            else:
+                search_error = f'未找到可用票号：{q}'
+        else:
+            offset = (page - 1) * per_page
+            cursor.execute('SELECT id, ticket_number FROM tickets WHERE is_selected = 0 ORDER BY id LIMIT ? OFFSET ?', (per_page, offset))
+            tickets = cursor.fetchall()
         
         # 计算奖池剩余金额（总金额 - 已中奖金额）
         cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1 AND amount > 0')
         won_amount = cursor.fetchone()[0] or 0
         
         # 从设置文件获取总金额
-        with open('setting.json', 'r', encoding='utf-8') as f:
-            settings = json.load(f)
-        remaining_prize_pool = settings['total_amount'] - won_amount
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+        except FileNotFoundError:
+            settings = {'total_amount': 0}
+        remaining_prize_pool = int(settings.get('total_amount', 0)) - won_amount
         
         # 获取用户已刮张数 (从数据库统计)
         cursor.execute('SELECT COUNT(*) FROM tickets WHERE owner_username = ? AND is_selected = 1', (session['username'],))
@@ -376,23 +457,22 @@ def dashboard():
         tickets = []
         remaining_prize_pool = 0
         user_scratched = 0
+        pool_remaining = 0
+        search_error = None
     
-    # 分页逻辑 - 移除分页，显示所有未使用的票据，适应移动端滑动选择
-    # page = int(request.args.get('page', 1))
-    # per_page = 9
-    # start = (page - 1) * per_page
-    # end = start + per_page
-    # tickets_on_page = tickets[start:end]
     tickets_on_page = tickets
-    
-    # 剩余未刮张数
-    pool_remaining = len(tickets)
+    total_pages = max((pool_remaining + per_page - 1) // per_page, 1)
     
     return render_template('dashboard.html', 
                          tickets=tickets_on_page, 
                          remaining_prize_pool=remaining_prize_pool,
                          user_scratched=user_scratched,
-                         pool_remaining=pool_remaining)
+                         pool_remaining=pool_remaining,
+                         page=page,
+                         per_page=per_page,
+                         total_pages=total_pages,
+                         q=q,
+                         search_error=search_error)
 
 @app.route('/scratch_card/<int:ticket_id>')
 def scratch_card(ticket_id):
@@ -401,7 +481,7 @@ def scratch_card(ticket_id):
     
     try:
         # 查询票的详细信息（不立即标记为已使用）
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute('SELECT ticket_number, amount, is_selected FROM tickets WHERE id = ?', (ticket_id,))
         ticket_info = cursor.fetchone()
@@ -437,7 +517,7 @@ def complete_scratch(ticket_id):
     
     try:
         # 标记票为已使用，并记录用户
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         username = session['username']
         cursor.execute('UPDATE tickets SET is_selected = 1, owner_username = ? WHERE id = ? AND is_selected = 0', (username, ticket_id))
@@ -625,9 +705,9 @@ def register():
         
         # 将新用户添加到数据库
         try:
-            conn = sqlite3.connect('xx.sqlite')
+            conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
-            cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+            cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, generate_password_hash(password)))
             conn.commit()
             conn.close()
             return redirect(url_for('login'))
@@ -649,12 +729,149 @@ def admin():
     
     if request.method == 'POST':
         password = request.form['password']
-        if password == 'admin123':  # 简易密码
+        user = get_user_from_db('admin')
+        if user and check_password_hash(user[1], password) and int(user[2] or 0) == 1:
             session['admin'] = True
+            session['admin_username'] = 'admin'
             return redirect(url_for('admin_settings'))
-        else:
-            return '密码错误'
+        return '密码错误'
     return render_template('admin.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin', None)
+    session.pop('admin_username', None)
+    return redirect(url_for('admin'))
+
+@app.route('/admin/users/create', methods=['POST'])
+def admin_create_user():
+    if 'admin' not in session:
+        return redirect(url_for('admin'))
+
+    username = (request.form.get('username') or '').strip()
+    password = (request.form.get('password') or '').strip()
+    if not username:
+        flash('用户名不能为空')
+        return redirect(url_for('admin_settings'))
+
+    if not password:
+        password = secrets.token_urlsafe(10)
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        ensure_user_schema(conn)
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO users (username, password, is_admin) VALUES (?, ?, 0)', (username, generate_password_hash(password)))
+        conn.commit()
+        conn.close()
+        flash(f'已创建用户 {username}，初始密码：{password}')
+        return redirect(url_for('admin_settings'))
+    except sqlite3.IntegrityError:
+        flash(f'用户已存在：{username}')
+        return redirect(url_for('admin_settings'))
+    except sqlite3.Error as e:
+        print(f"创建用户错误: {e}")
+        flash('创建用户失败')
+        return redirect(url_for('admin_settings'))
+
+@app.route('/admin/users/delete', methods=['POST'])
+def admin_delete_user():
+    if 'admin' not in session:
+        return redirect(url_for('admin'))
+
+    username = (request.form.get('username') or '').strip()
+    if not username or username == 'admin':
+        flash('不允许删除该用户')
+        return redirect(url_for('admin_settings'))
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        ensure_user_schema(conn)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COALESCE(is_admin, 0) FROM users WHERE username = ?', (username,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            flash(f'用户不存在：{username}')
+            return redirect(url_for('admin_settings'))
+        if int(row[0] or 0) == 1:
+            conn.close()
+            flash('不允许删除管理员用户')
+            return redirect(url_for('admin_settings'))
+
+        cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+        conn.commit()
+        conn.close()
+        flash(f'已删除用户：{username}（其刮卡历史仍保留）')
+        return redirect(url_for('admin_settings'))
+    except sqlite3.Error as e:
+        print(f"删除用户错误: {e}")
+        flash('删除用户失败')
+        return redirect(url_for('admin_settings'))
+
+@app.route('/admin/users/reset_password', methods=['POST'])
+def admin_reset_password():
+    if 'admin' not in session:
+        return redirect(url_for('admin'))
+
+    username = (request.form.get('username') or '').strip()
+    new_password = (request.form.get('new_password') or '').strip()
+    if not username:
+        flash('用户名不能为空')
+        return redirect(url_for('admin_settings'))
+
+    if not new_password:
+        new_password = secrets.token_urlsafe(10)
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        ensure_user_schema(conn)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET password = ? WHERE username = ?', (generate_password_hash(new_password), username))
+        if cursor.rowcount <= 0:
+            conn.close()
+            flash(f'用户不存在：{username}')
+            return redirect(url_for('admin_settings'))
+        conn.commit()
+        conn.close()
+        flash(f'已重置 {username} 密码：{new_password}')
+        return redirect(url_for('admin_settings'))
+    except sqlite3.Error as e:
+        print(f"重置密码错误: {e}")
+        flash('重置密码失败')
+        return redirect(url_for('admin_settings'))
+
+@app.route('/admin/users/change_admin_password', methods=['POST'])
+def admin_change_admin_password():
+    if 'admin' not in session:
+        return redirect(url_for('admin'))
+
+    current_password = (request.form.get('current_password') or '').strip()
+    new_password = (request.form.get('new_password') or '').strip()
+    if not current_password or not new_password:
+        flash('请输入当前密码与新密码')
+        return redirect(url_for('admin_settings'))
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        ensure_user_schema(conn)
+        cursor = conn.cursor()
+        cursor.execute('SELECT password FROM users WHERE username = ?', ('admin',))
+        row = cursor.fetchone()
+        if not row or not check_password_hash(row[0], current_password):
+            conn.close()
+            flash('当前管理员密码不正确')
+            return redirect(url_for('admin_settings'))
+
+        cursor.execute('UPDATE users SET password = ? WHERE username = ?', (generate_password_hash(new_password), 'admin'))
+        conn.commit()
+        conn.close()
+        flash('管理员密码已更新')
+        return redirect(url_for('admin_settings'))
+    except sqlite3.Error as e:
+        print(f"修改管理员密码错误: {e}")
+        flash('修改管理员密码失败')
+        return redirect(url_for('admin_settings'))
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
 def admin_settings():
@@ -662,7 +879,7 @@ def admin_settings():
         return redirect(url_for('admin'))
     
     try:
-        with open('setting.json', 'r', encoding='utf-8') as f:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
             settings = json.load(f)
     except FileNotFoundError:
         settings = {
@@ -674,17 +891,21 @@ def admin_settings():
     
     # 查询用户统计和奖池信息
     user_stats = []
+    users = []
     remaining_prize_pool = 0
     remaining_winning_tickets = 0
     winning_tickets = []
     
     try:
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
+        ensure_user_schema(conn)
         cursor = conn.cursor()
         
         # 获取所有用户
-        cursor.execute('SELECT username FROM users')
-        all_users = [row[0] for row in cursor.fetchall()]
+        cursor.execute('SELECT username, COALESCE(is_admin, 0) FROM users ORDER BY COALESCE(is_admin, 0) DESC, username ASC')
+        all_users = cursor.fetchall()
+        all_usernames = {u[0] for u in all_users}
+        users = [(u[0], int(u[1] or 0)) for u in all_users]
         
         # 统计每个用户的刮卡数和中奖金额
         cursor.execute('''
@@ -697,15 +918,15 @@ def admin_settings():
         
         # 组装最终统计数据，确保所有用户都在列表中
         user_stats = []
-        for username in all_users:
+        for username, is_admin in all_users:
             count, winnings = stats_data.get(username, (0, 0))
-            user_stats.append((username, count, winnings))
+            user_stats.append((username, count, winnings, int(is_admin or 0)))
             
         # 补充：如果有不在 users 表中的用户（例如被删除的用户）但有刮卡记录，也显示出来
         for username in stats_data:
-            if username not in all_users:
+            if username not in all_usernames:
                 count, winnings = stats_data[username]
-                user_stats.append((f"{username} (已删)", count, winnings))
+                user_stats.append((f"{username} (已删)", count, winnings, 0))
         
         # 计算奖池剩余金额（总金额 - 已中奖金额）
         cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1 AND amount > 0')
@@ -737,12 +958,13 @@ def admin_settings():
         settings['prize_amounts'] = prize_amounts
         
         # 保存设置到文件
-        with open('setting.json', 'w', encoding='utf-8') as f:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=4, ensure_ascii=False)
         
-        # 重置所有用户的刮卡记录并重新初始化
+        # 重置票据与奖池并重新初始化（不删除 users 表，历史 owner_username 也会随票据重置而清空）
         try:
-            conn = sqlite3.connect('xx.sqlite')
+            conn = sqlite3.connect(DB_FILE)
+            ensure_ticket_schema(conn)
             cursor = conn.cursor()
             
             # 删除所有票据记录
@@ -799,7 +1021,7 @@ def admin_settings():
             # 插入所有票据
             for ticket_number in all_ticket_numbers:
                 amount = ticket_amounts[ticket_number]
-                cursor.execute('INSERT INTO tickets (ticket_number, amount, is_selected) VALUES (?, ?, 0)', 
+                cursor.execute('INSERT INTO tickets (ticket_number, amount, is_selected, owner_username) VALUES (?, ?, 0, NULL)', 
                              (ticket_number, amount))
             
             conn.commit()
@@ -814,6 +1036,7 @@ def admin_settings():
     return render_template('admin_settings.html', 
                          settings=settings, 
                          user_stats=user_stats,
+                         users=users,
                          remaining_prize_pool=remaining_prize_pool,
                          remaining_winning_tickets=remaining_winning_tickets,
                          winning_tickets=winning_tickets)
@@ -821,7 +1044,7 @@ def admin_settings():
 @app.route('/remaining_count')
 def remaining_count():
     try:
-        conn = sqlite3.connect('xx.sqlite')
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         # 统计剩余未被刮开的票数
         cursor.execute('SELECT COUNT(*) FROM tickets WHERE is_selected = 0')
@@ -834,4 +1057,5 @@ def remaining_count():
 
 if __name__ == '__main__':
     # app.run(debug=True)
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    port = int(os.environ.get('PORT', '5000'))
+    app.run(host='0.0.0.0', port=port, debug=False)

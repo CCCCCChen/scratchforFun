@@ -45,6 +45,16 @@
             <div class="col-md-10 p-4">
                 <h2 class="mb-4">控制台</h2>
 
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                <div class="alert alert-info">
+                    {% for message in messages %}
+                    <div>{{ message }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
                 <!-- Stats Row -->
                 <div class="row mb-4">
                     <div class="col-md-3">
@@ -90,7 +100,7 @@
                                 <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>参数配置</h5>
                             </div>
                             <div class="card-body">
-                                <form method="POST" onsubmit="return confirm('警告：保存将重置所有票据和用户记录！确定要继续吗？');">
+                                <form method="POST" onsubmit="return confirm('警告：保存将重置所有票据与奖池数据（不会删除用户账户）。确定要继续吗？');">
                                     <div class="mb-3">
                                         <label class="form-label">总票数 (Total Tickets)</label>
                                         <input type="number" name="total_tickets" class="form-control" value="{{ settings.total_tickets }}" required>
@@ -138,7 +148,12 @@
                                         <tbody>
                                             {% for stat in user_stats %}
                                             <tr>
-                                                <td>{{ stat[0] }}</td>
+                                                <td>
+                                                    {{ stat[0] }}
+                                                    {% if stat[3] == 1 %}
+                                                    <span class="badge bg-dark ms-2">Admin</span>
+                                                    {% endif %}
+                                                </td>
                                                 <td>{{ stat[1] }}</td>
                                                 <td>￥{{ stat[2] }}</td>
                                             </tr>
@@ -146,6 +161,82 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="fas fa-user-shield me-2"></i>用户管理</h5>
+                                <a href="{{ url_for('admin_logout') }}" class="btn btn-sm btn-outline-secondary">退出后台</a>
+                            </div>
+                            <div class="card-body">
+                                <form class="row g-2 mb-3" method="POST" action="{{ url_for('admin_create_user') }}">
+                                    <div class="col-12 col-md-5">
+                                        <input name="username" class="form-control" placeholder="新用户名" required>
+                                    </div>
+                                    <div class="col-12 col-md-5">
+                                        <input name="password" class="form-control" placeholder="初始密码（留空自动生成）">
+                                    </div>
+                                    <div class="col-12 col-md-2 d-grid">
+                                        <button class="btn btn-primary" type="submit">新建</button>
+                                    </div>
+                                </form>
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>用户</th>
+                                                <th style="width: 260px;">重置密码</th>
+                                                <th style="width: 110px;">删除</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for u in users %}
+                                            <tr>
+                                                <td>
+                                                    {{ u[0] }}
+                                                    {% if u[1] == 1 %}
+                                                    <span class="badge bg-dark ms-2">Admin</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <form class="d-flex gap-2" method="POST" action="{{ url_for('admin_reset_password') }}">
+                                                        <input type="hidden" name="username" value="{{ u[0] }}">
+                                                        <input name="new_password" class="form-control form-control-sm" placeholder="新密码（留空自动生成）">
+                                                        <button class="btn btn-sm btn-outline-primary" type="submit">重置</button>
+                                                    </form>
+                                                </td>
+                                                <td>
+                                                    <form method="POST" action="{{ url_for('admin_delete_user') }}" onsubmit="return confirm('确定删除用户 {{ u[0] }}？（刮卡历史会保留）');">
+                                                        <input type="hidden" name="username" value="{{ u[0] }}">
+                                                        <button class="btn btn-sm btn-outline-danger" type="submit" {% if u[0] == 'admin' or u[1] == 1 %}disabled{% endif %}>删除</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-4">
+                            <div class="card-header bg-white">
+                                <h5 class="mb-0"><i class="fas fa-key me-2"></i>修改管理员密码</h5>
+                            </div>
+                            <div class="card-body">
+                                <form class="row g-2" method="POST" action="{{ url_for('admin_change_admin_password') }}">
+                                    <div class="col-12 col-md-5">
+                                        <input type="password" name="current_password" class="form-control" placeholder="当前管理员密码" required>
+                                    </div>
+                                    <div class="col-12 col-md-5">
+                                        <input type="password" name="new_password" class="form-control" placeholder="新管理员密码" required>
+                                    </div>
+                                    <div class="col-12 col-md-2 d-grid">
+                                        <button class="btn btn-warning" type="submit">修改</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
 

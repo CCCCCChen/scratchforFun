@@ -7,10 +7,13 @@ services:
       - "5000:5000"
     volumes:
       - ./data:/app/data
-      - ./xx.sqlite:/app/xx.sqlite
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
+      - PORT=5000
+      - URL_PREFIX=/scratch4fun
+      - DATABASE_FILE=/app/data/xx.sqlite
+      - SETTINGS_FILE=/app/data/setting.json
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000"]

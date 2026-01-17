@@ -17,7 +17,7 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-访问 http://localhost:5000
+访问 http://localhost:5000（如果配置了子路径，访问 http://localhost/scratch4fun/）
 
 ### 2. 生产环境部署
 
@@ -105,13 +105,15 @@ environment:
   - FLASK_ENV=production
   - SECRET_KEY=your-secret-key  # 建议设置随机密钥
   - DATABASE_URL=sqlite:///xx.sqlite
+  - URL_PREFIX=/scratch4fun
+  - ADMIN_INIT_PASSWORD=change-me
 ```
 
 ### 数据持久化
 
 应用数据存储在以下位置：
-- 数据库文件: `./xx.sqlite`
-- 应用数据: `./data/`
+- 数据库文件: `./data/xx.sqlite`
+- 配置文件: `./data/setting.json`
 
 ### SSL/HTTPS 配置
 
