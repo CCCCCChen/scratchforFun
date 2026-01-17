@@ -3,7 +3,7 @@ import os
 import random
 import sqlite3
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, make_response
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -33,8 +33,8 @@ def get_user_from_db(username):
         print(f"获取用户信息错误: {e}")
         return None
 
-# 用户刮刮乐数量记录
-user_scratch_count = {}
+# 用户刮刮乐数量记录 (已弃用，改用数据库统计)
+# user_scratch_count = {}
 
 # 根据总票数、总金额、可中奖金额列表和目标中奖票数，生成中奖金额频数列表
 def generate_prize_frequencies(prize_amounts, target_winning_tickets, total_amount):
@@ -289,6 +289,20 @@ def initialize_app():
         print("初始化完成。")
     else:
         print("已存在初始化文件，跳过初始化逻辑。")
+    
+    # Schema Migration: Ensure owner_username exists
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(tickets)")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'owner_username' not in columns:
+            print("Migrating: Adding owner_username column to tickets table...")
+            cursor.execute('ALTER TABLE tickets ADD COLUMN owner_username TEXT')
+            conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"Schema migration error: {e}")
 
 # 应用启动时调用初始化函数
 initialize_app()
@@ -309,8 +323,6 @@ def login():
         user = get_user_from_db(username)
         if user and user[1] == password:  # user[1] 是密码
             session['username'] = username
-            if username not in user_scratch_count:
-                user_scratch_count[username] = 0
             
             # 初始化用户信息（从数据库读取）
             try:
@@ -354,11 +366,16 @@ def dashboard():
             settings = json.load(f)
         remaining_prize_pool = settings['total_amount'] - won_amount
         
+        # 获取用户已刮张数 (从数据库统计)
+        cursor.execute('SELECT COUNT(*) FROM tickets WHERE owner_username = ? AND is_selected = 1', (session['username'],))
+        user_scratched = cursor.fetchone()[0]
+        
         conn.close()
     except sqlite3.Error as e:
         print(f"查询票据错误: {e}")
         tickets = []
         remaining_prize_pool = 0
+        user_scratched = 0
     
     # 分页逻辑 - 移除分页，显示所有未使用的票据，适应移动端滑动选择
     # page = int(request.args.get('page', 1))
@@ -368,7 +385,14 @@ def dashboard():
     # tickets_on_page = tickets[start:end]
     tickets_on_page = tickets
     
-    return render_template('dashboard.html', tickets=tickets_on_page, remaining_prize_pool=remaining_prize_pool)
+    # 剩余未刮张数
+    pool_remaining = len(tickets)
+    
+    return render_template('dashboard.html', 
+                         tickets=tickets_on_page, 
+                         remaining_prize_pool=remaining_prize_pool,
+                         user_scratched=user_scratched,
+                         pool_remaining=pool_remaining)
 
 @app.route('/scratch_card/<int:ticket_id>')
 def scratch_card(ticket_id):
@@ -386,15 +410,20 @@ def scratch_card(ticket_id):
         if ticket_info:
             ticket_number, amount, is_selected = ticket_info
             if is_selected:
-                return '该票已被使用', 400
+                return redirect(url_for('dashboard'))
             
             # 生成刮刮卡内容
             scratch_data = generate_scratch_card_data(amount)
-            return render_template('scratch_card.html', 
+            response = make_response(render_template('scratch_card.html', 
                                  ticket_number=ticket_number, 
                                  amount=amount, 
                                  ticket_id=ticket_id,
-                                 scratch_data=scratch_data)
+                                 scratch_data=scratch_data))
+            # 禁止浏览器缓存此页面
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
         else:
             return '票不存在', 404
     except sqlite3.Error as e:
@@ -407,10 +436,11 @@ def complete_scratch(ticket_id):
         return jsonify({'success': False, 'message': '请先登录'}), 403
     
     try:
-        # 标记票为已使用
+        # 标记票为已使用，并记录用户
         conn = sqlite3.connect('xx.sqlite')
         cursor = conn.cursor()
-        cursor.execute('UPDATE tickets SET is_selected = 1 WHERE id = ? AND is_selected = 0', (ticket_id,))
+        username = session['username']
+        cursor.execute('UPDATE tickets SET is_selected = 1, owner_username = ? WHERE id = ? AND is_selected = 0', (username, ticket_id))
         affected_rows = cursor.rowcount
         conn.commit()
         conn.close()
@@ -652,18 +682,30 @@ def admin_settings():
         conn = sqlite3.connect('xx.sqlite')
         cursor = conn.cursor()
         
-        # 获取所有用户（由于tickets表没有user_id字段，暂时显示基础信息）
+        # 获取所有用户
         cursor.execute('SELECT username FROM users')
-        users = cursor.fetchall()
+        all_users = [row[0] for row in cursor.fetchall()]
         
-        # 计算总的已刮卡数和总奖金（所有用户共享）
-        cursor.execute('SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1')
-        total_scratched, total_winnings = cursor.fetchone()
+        # 统计每个用户的刮卡数和中奖金额
+        cursor.execute('''
+            SELECT owner_username, COUNT(*), COALESCE(SUM(amount), 0) 
+            FROM tickets 
+            WHERE is_selected = 1 AND owner_username IS NOT NULL 
+            GROUP BY owner_username
+        ''')
+        stats_data = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
         
-        # 为每个用户创建统计数据（平均分配或显示总数）
+        # 组装最终统计数据，确保所有用户都在列表中
         user_stats = []
-        for user in users:
-            user_stats.append((user[0], total_scratched or 0, total_winnings or 0))
+        for username in all_users:
+            count, winnings = stats_data.get(username, (0, 0))
+            user_stats.append((username, count, winnings))
+            
+        # 补充：如果有不在 users 表中的用户（例如被删除的用户）但有刮卡记录，也显示出来
+        for username in stats_data:
+            if username not in all_users:
+                count, winnings = stats_data[username]
+                user_stats.append((f"{username} (已删)", count, winnings))
         
         # 计算奖池剩余金额（总金额 - 已中奖金额）
         cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM tickets WHERE is_selected = 1 AND amount > 0')
@@ -776,24 +818,19 @@ def admin_settings():
                          remaining_winning_tickets=remaining_winning_tickets,
                          winning_tickets=winning_tickets)
 
-@app.route('/scratch', methods=['POST'])
-def scratch():
-    if 'username' not in session:
-        return '请先登录', 403
-    username = session['username']
-    
-    # Ensure user exists in counter
-    if username not in user_scratch_count:
-        user_scratch_count[username] = 0
-        
-    if user_scratch_count[username] >= scratch_count:
-        return '刮刮乐数量不足', 400
-    user_scratch_count[username] += 1
-    return '刮刮乐成功', 200
-
 @app.route('/remaining_count')
 def remaining_count():
-    return jsonify({'remainingCount': scratch_count - sum(user_scratch_count.values())})
+    try:
+        conn = sqlite3.connect('xx.sqlite')
+        cursor = conn.cursor()
+        # 统计剩余未被刮开的票数
+        cursor.execute('SELECT COUNT(*) FROM tickets WHERE is_selected = 0')
+        remaining = cursor.fetchone()[0]
+        conn.close()
+        return jsonify({'remainingCount': remaining})
+    except sqlite3.Error as e:
+        print(f"查询剩余票数错误: {e}")
+        return jsonify({'remainingCount': 0})
 
 if __name__ == '__main__':
     # app.run(debug=True)

@@ -247,6 +247,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script>
+        // 防止 Safari bfcache (Back-Forward Cache) 导致返回时显示旧页面
+        window.onpageshow = function(event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        };
+
         window.onload = function() {
             const canvas = document.getElementById('scratchCanvas');
             const ctx = canvas.getContext('2d');
@@ -256,6 +263,13 @@
             let isCompleted = false;
 
             function setCanvasSize() {
+                // Ensure layout is ready
+                if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
+                    console.log('Canvas dimensions are 0, retrying...');
+                    setTimeout(setCanvasSize, 100);
+                    return;
+                }
+
                 canvas.width = canvas.offsetWidth;
                 canvas.height = canvas.offsetHeight;
                 ctx.fillStyle = '#CCCCCC'; // 涂层颜色
@@ -265,6 +279,7 @@
                 ctx.font = '20px Arial';
                 ctx.fillStyle = '#999999';
                 ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
                 ctx.fillText('刮开涂层', canvas.width/2, canvas.height/2);
                 
                 totalPixels = canvas.width * canvas.height;
@@ -273,8 +288,18 @@
                 document.querySelector('.grid-container').style.visibility = 'visible';
             }
 
+            // 尝试多次初始化，以防万一
             setCanvasSize();
-            // 注意：resize会导致涂层重置，实际生产中应保存状态。这里简单起见，暂不处理resize时的状态保留
+            
+            // 监听 resize 事件，防止屏幕旋转或软键盘收起导致变形
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                // 只有当未完成时才重置，或者根据需求保留状态
+                if (!isCompleted && !isDrawing) {
+                    clearTimeout(resizeTimeout);
+                    resizeTimeout = setTimeout(setCanvasSize, 200);
+                }
+            });
             
             function getEventPos(e) {
                 const rect = canvas.getBoundingClientRect();
@@ -300,13 +325,28 @@
                 ctx.arc(pos.x, pos.y, 25, 0, Math.PI * 2);
                 ctx.fill();
 
+                // 如果用户还在操作，重置自动完成定时器
+                if (autoFinishTimer) {
+                    clearTimeout(autoFinishTimer);
+                    autoFinishTimer = null;
+                }
+
+                // 如果已经达标，且用户还在操作，准备新的倒计时
+                if (isThresholdReached) {
+                    autoFinishTimer = setTimeout(finishScratch, 1000);
+                }
+
                 checkProgress();
             }
 
             // 节流检查进度，避免卡顿
             let checkTimeout;
+            let autoFinishTimer = null;
+            let isThresholdReached = false;
+
             function checkProgress() {
-                if (checkTimeout) return;
+                if (isThresholdReached || checkTimeout) return;
+                
                 checkTimeout = setTimeout(() => {
                     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     let pixels = 0;
@@ -318,7 +358,11 @@
                     const sampledTotal = imageData.data.length / 40;
                     
                     if (pixels / sampledTotal > 0.6) { // 60% 阈值
-                        finishScratch();
+                        isThresholdReached = true;
+                        // 首次达标，开始倒计时
+                        if (!autoFinishTimer) {
+                            autoFinishTimer = setTimeout(finishScratch, 1000);
+                        }
                     }
                     checkTimeout = null;
                 }, 100);
@@ -392,7 +436,8 @@
         };
 
         function goHome() {
-            window.location.href = "{{ url_for('dashboard') }}";
+            // 使用 replace 替换当前历史记录，防止点击返回再次进入此页面
+            window.location.replace("{{ url_for('dashboard') }}");
         }
     </script>
 </body>

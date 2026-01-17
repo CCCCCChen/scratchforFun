@@ -356,12 +356,15 @@
     <div class="header-info">
         <h2>选择您的幸运卡片</h2>
         <div class="prize-pool">奖池剩余: ￥{{ remaining_prize_pool }}</div>
+        <div class="stats-info" style="font-size: 0.9rem; margin-top: 8px; color: rgba(255,255,255,0.9);">
+            <span>剩余卡片: {{ pool_remaining }}张</span> | <span>您已刮: {{ user_scratched }}张</span>
+        </div>
         
         <!-- 搜索框 -->
-        <div class="search-box">
-            <input type="text" id="ticketSearch" placeholder="输入票号搜索 (如 T001)" onkeydown="handleSearchKey(event)">
-            <button onclick="searchTicket()" type="button"><i class="fas fa-search"></i></button>
-        </div>
+        <form class="search-box" onsubmit="event.preventDefault(); searchTicket();" action="javascript:void(0);">
+            <input type="search" id="ticketSearch" placeholder="输入票号搜索 (如 T001)" autocomplete="off">
+            <button type="submit"><i class="fas fa-search"></i></button>
+        </form>
         <div id="searchError" class="search-error"></div>
     </div>
 
@@ -371,6 +374,7 @@
             <div class="swiper-wrapper" id="swiperWrapper">
                 <!-- Swiper slides will be loaded dynamically -->
             </div>
+            <div class="swiper-scrollbar"></div>
         </div>
 
         <!-- Grid View -->
@@ -428,8 +432,10 @@
                 centeredSlides: true,
                 slidesPerView: "auto",
                 initialSlide: 0,
-                // ⚠️ 彻底移除 Virtual Mode，回退到手动分批加载，确保兼容性和可见性
-                // virtual: { ... },
+                scrollbar: {
+                    el: '.swiper-scrollbar',
+                    hide: true,
+                },
                 on: {
                     reachEnd: function () {
                         if (!isLoading && loadedCount < ticketsData.length) {
@@ -477,13 +483,6 @@
              }, 50);
         }
         
-        function handleSearchKey(event) {
-            if (event.key === 'Enter' || event.keyCode === 13) {
-                event.preventDefault(); // 阻止默认回车行为
-                searchTicket();
-            }
-        }
-
         function searchTicket() {
              const input = document.getElementById('ticketSearch');
              const errorEl = document.getElementById('searchError');
