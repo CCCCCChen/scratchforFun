@@ -77,7 +77,8 @@ chmod +x deploy.sh
 ./deploy.sh
 
 # 或手动启动
-docker-compose up -d
+mkdir -p data
+docker compose up -d scratch-app
 ```
 
 4. **配置防火墙**
@@ -104,9 +105,10 @@ sudo firewall-cmd --reload
 environment:
   - FLASK_ENV=production
   - SECRET_KEY=your-secret-key  # 建议设置随机密钥
-  - DATABASE_URL=sqlite:///xx.sqlite
   - URL_PREFIX=/scratch4fun
   - ADMIN_INIT_PASSWORD=change-me
+  - DATABASE_FILE=/app/data/xx.sqlite
+  - SETTINGS_FILE=/app/data/setting.json
 ```
 
 ### 数据持久化
@@ -114,6 +116,98 @@ environment:
 应用数据存储在以下位置：
 - 数据库文件: `./data/xx.sqlite`
 - 配置文件: `./data/setting.json`
+
+## 与现有 Nginx（80/443 已占用）共存
+
+如果云服务器上已经有一个 Nginx（例如你提供的 `warehouse.hchch.tech` 配置）占用了 80/443，那么不要再启动本项目的 `nginx` 容器（否则端口冲突）。
+
+建议做法：
+1. 只启动 `scratch-app`（暴露一个宿主机端口，比如 5000 或 5005）。
+2. 在“现有”的 Nginx 配置里新增一个 `location /scratch4fun/` 反代到该端口。
+3. 为目标域名申请证书（如果不是沿用现有证书的域名）。
+
+### 方式 A：挂在同一个域名下（推荐最省事）
+
+如果你允许用已有的域名（例如 `warehouse.hchch.tech`）来访问刮刮卡，那么直接在对应的 `server { server_name warehouse.hchch.tech; ... }` 里加：
+
+```nginx
+location = /scratch4fun {
+  return 301 /scratch4fun/;
+}
+
+location /scratch4fun/ {
+  proxy_pass http://127.0.0.1:5000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_connect_timeout 60s;
+  proxy_send_timeout 60s;
+  proxy_read_timeout 60s;
+}
+```
+
+访问：`https://warehouse.hchch.tech/scratch4fun/`
+
+### 方式 B：使用另一个域名（例如 hchch.tech）
+
+这种方式需要为 `hchch.tech` 单独申请证书，然后新增两个 server block（80/443）。示例：
+
+```nginx
+server {
+  listen 80;
+  server_name hchch.tech;
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name hchch.tech;
+
+  ssl_certificate     /etc/letsencrypt/live/hchch.tech/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/hchch.tech/privkey.pem;
+
+  location = /scratch4fun {
+    return 301 /scratch4fun/;
+  }
+
+  location /scratch4fun/ {
+    proxy_pass http://127.0.0.1:5000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+  }
+}
+```
+
+访问：`https://hchch.tech/scratch4fun/`
+
+### 应用侧必须配置 URL_PREFIX
+
+子路径访问必须保持：
+- `URL_PREFIX=/scratch4fun`
+
+本项目的 `docker-compose.yml` 已默认设置该变量。
+
+## 统一入口网关（推荐做法）
+
+如果你希望多个服务（cc、bb 等）统一由一个 Nginx 网关对外提供 80/443，并统一管理证书与反代规则，请使用本仓库提供的网关模板：
+
+- 网关部署说明：[GATEWAY.md](file:///e:/PersonalFiles/Coding/scratchforFun/ops/nginx-gateway/GATEWAY.md)
+- cc（刮刮卡）接入说明：[CC_SCRATCH_APP.md](file:///e:/PersonalFiles/Coding/scratchforFun/ops/nginx-gateway/CC_SCRATCH_APP.md)
+- bb 服务接入事项清单：[BB_SERVICE_STEPS.md](file:///e:/PersonalFiles/Coding/scratchforFun/ops/nginx-gateway/BB_SERVICE_STEPS.md)
 
 ### SSL/HTTPS 配置
 
@@ -152,11 +246,11 @@ docker-compose down
 
 # 更新应用
 git pull
-docker-compose build
-docker-compose up -d
+docker compose build
+docker compose up -d scratch-app
 
 # 备份数据库
-cp xx.sqlite xx.sqlite.backup.$(date +%Y%m%d_%H%M%S)
+cp ./data/xx.sqlite ./data/xx.sqlite.backup.$(date +%Y%m%d_%H%M%S)
 
 # 进入容器调试
 docker-compose exec scratch-app bash

@@ -3,18 +3,24 @@ version: '3.8'
 services:
   scratch-app:
     build: .
+    container_name: cc-service
     ports:
       - "5000:5000"
+    expose:
+      - "5000"
     volumes:
       - ./data:/app/data
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
       - PORT=5000
-      - URL_PREFIX=/scratch4fun
+      - URL_PREFIX=
       - DATABASE_FILE=/app/data/xx.sqlite
       - SETTINGS_FILE=/app/data/setting.json
     restart: unless-stopped
+    networks:
+      - gateway-network
+      - scratch-internal
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000"]
       interval: 30s
@@ -25,6 +31,7 @@ services:
   # 可选：添加nginx反向代理
   nginx:
     image: nginx:alpine
+    profiles: ["standalone-nginx"]
     ports:
       - "80:80"
       - "443:443"
@@ -38,3 +45,9 @@ services:
 volumes:
   app_data:
     driver: local
+
+networks:
+  gateway-network:
+    external: true
+  scratch-internal:
+    driver: bridge

@@ -10,3 +10,5 @@ xx.sqlite
 .idea/
 .vscode/
 *.log
+*.sqlite
+otherProject_nginx.conf
