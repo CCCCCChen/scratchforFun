@@ -1,12 +1,17 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户登录</title>
+{% extends "base.html" %}
+
+{% block title %}用户登录{% endblock %}
+
+{% block head_extra %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% endblock %}
+
+{% block styles %}
     <style>
-        /* 玻璃拟态风格的CSS */
+        :root {
+            --footer-color: rgba(0,0,0,0.55);
+        }
+
         body {
             background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
             font-family: 'Arial', sans-serif;
@@ -89,8 +94,9 @@
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block body %}
     <div class="glass-container">
         <h2>登录</h2>
         <form method="POST" action="{{ url_for('login') }}">
@@ -101,5 +107,4 @@
         <p>没有账号？<a href="{{ url_for('register') }}">注册</a></p>
         <a href="{{ url_for('admin') }}" class="admin-link">管理员登录</a>
     </div>
-</body>
-</html>
+{% endblock %}

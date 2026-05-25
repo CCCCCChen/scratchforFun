@@ -1,10 +1,13 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>刮刮乐</title>
+{% extends "base.html" %}
+
+{% block title %}刮刮乐{% endblock %}
+
+{% block styles %}
     <style>
+        :root {
+            --footer-color: rgba(255,255,255,0.75);
+        }
+
         body {
             background: linear-gradient(135deg, #2b32b2, #1488cc);
             height: 100vh;
@@ -210,10 +213,10 @@
             transition: transform 0.2s;
         }
         .btn-home:active { transform: scale(0.95); }
-
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block body %}
     <div class="glass-container">
         <div class="scratch-card">
             <div class="top-bg"></div>
@@ -440,5 +443,4 @@
             window.location.replace("{{ url_for('dashboard') }}");
         }
     </script>
-</body>
-</html>
+{% endblock %}

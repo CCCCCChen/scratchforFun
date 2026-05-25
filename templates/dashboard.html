@@ -1,9 +1,8 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>刮刮卡大厅</title>
+{% extends "base.html" %}
+
+{% block title %}刮刮卡大厅{% endblock %}
+
+{% block styles %}
     <style>
         :root {
             --bg: linear-gradient(135deg, #0f172a, #1f2937 55%, #111827);
@@ -12,6 +11,7 @@
             --text: rgba(255,255,255,0.92);
             --muted: rgba(255,255,255,0.72);
             --border: rgba(255,255,255,0.16);
+            --footer-color: rgba(255,255,255,0.70);
         }
 
         * { box-sizing: border-box; }
@@ -39,6 +39,10 @@
             max-width: 1000px;
             margin: 0 auto;
             padding: 14px 16px;
+        }
+
+        main .wrap {
+            padding-bottom: 64px;
         }
 
         .topbar {
@@ -194,12 +198,13 @@
             .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
         }
     </style>
-</head>
-<body>
+{% endblock %}
     <header>
+{% block body %}
         <div class="wrap">
             <div class="topbar">
                 <div class="brand">
+                    <h1>刮刮卡大厅</h1>
                     <h1>刮刮卡大厅</h1>
                     <div class="sub">当前用户：{{ session.get('username') }}</div>
                 </div>
@@ -275,5 +280,4 @@
             {% endif %}
         </div>
     </main>
-</body>
-</html>
+{% endblock %}

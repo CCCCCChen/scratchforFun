@@ -81,43 +81,9 @@ scratchforFun/
 *   **数据重置**：后台“保存配置并重置系统”会清空票据/奖池数据（不删除用户账户）。
 *   **密码**：所有用户（含管理员）密码均为哈希存储；重置密码会生成新的明文密码并在后台页面提示一次。
 
-## Docker + HTTPS + 子路径部署（/scratch4fun/）
-
-### 1) 构建并上传（两种方式）
-
-方式 A：在服务器上构建
-```bash
-git clone <your-repo-url>
-cd scratchforFun
-mkdir -p data
-docker compose build
-docker compose up -d
-```
-
-方式 B：本地构建后推送镜像仓库（示例）
-```bash
-docker build -t <your-registry>/scratch4fun:latest .
-docker push <your-registry>/scratch4fun:latest
-```
-然后在服务器上修改 `docker-compose.yml` 使用该镜像并 `docker compose up -d`。
-
-### 2) 数据持久化
-
-`docker-compose.yml` 会将宿主机 `./data/` 目录挂载到容器 `/app/data/`，并将持久化文件放在该目录下：
-- `./data/xx.sqlite`：数据库
-- `./data/setting.json`：系统配置
-
-### 3) 配置 Nginx（HTTPS + 域名 + 文件夹路径）
-
-项目自带 `nginx.conf`，已按子路径 `/scratch4fun/` 反代配置。关键点：
-- 应用容器需要 `URL_PREFIX=/scratch4fun`（compose 已默认设置）
-- 访问示例：`https://hchch.tech/scratch4fun/`
-
-证书建议使用 Let's Encrypt，在宿主机准备好证书后放入 `./ssl/`：
-- `./ssl/cert.pem`
-- `./ssl/key.pem`
-
-然后取消 `nginx.conf` 中 HTTPS server 段落的注释，并在 `docker-compose.yml` 中启动 `nginx` 服务。
-
 ---
 Enjoy your lucky scratch! 🎉
+
+## 部署
+
+Docker + HTTPS + 子路径（/scratch4fun/）部署请看 [DEPLOYMENT.md](file:///e:/PersonalFiles/Coding/scratchforFun/DEPLOYMENT.md)。

@@ -43,6 +43,19 @@ class PrefixMiddleware:
 if URL_PREFIX:
     app.wsgi_app = PrefixMiddleware(app.wsgi_app, URL_PREFIX)
 
+@app.context_processor
+def inject_site_record():
+    icp_record = (os.environ.get('ICP_RECORD') or '').strip()
+    icp_link = (os.environ.get('ICP_LINK') or 'https://beian.miit.gov.cn/').strip()
+    ps_record = (os.environ.get('PS_RECORD') or '').strip()
+    ps_link = (os.environ.get('PS_LINK') or '').strip()
+    return {
+        'icp_record': icp_record,
+        'icp_link': icp_link,
+        'ps_record': ps_record,
+        'ps_link': ps_link,
+    }
+
 # 从数据库获取用户信息的函数
 def get_user_from_db(username):
     try:
