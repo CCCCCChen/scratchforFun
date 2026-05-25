@@ -10,3 +10,4 @@ xx.sqlite
 .idea/
 .vscode/
 *.log
+*.sqlite
