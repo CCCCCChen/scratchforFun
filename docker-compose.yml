@@ -17,12 +17,16 @@ services:
       - URL_PREFIX=
       - DATABASE_FILE=/app/data/xx.sqlite
       - SETTINGS_FILE=/app/data/setting.json
+      - ICP_RECORD=粤ICP备2026068958号-1
+      - ICP_LINK=https://beian.miit.gov.cn/
+      - PS_RECORD=粤公网安备xxxxxxxxxxxxxxxx号
+      - PS_LINK=https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=xxxxxxxxxxxxxxxx
     restart: unless-stopped
     networks:
       - gateway-network
       - scratch-internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
